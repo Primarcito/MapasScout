@@ -39,6 +39,7 @@ let mapas = {
 };
 
 let registros = {};
+let panelMessage = null;
 
 function guardarDatos() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({ mapas, registros }, null, 2));
@@ -82,6 +83,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 /* ================= EMBED ================= */
 
 function generarEmbed() {
+
   const embed = new EmbedBuilder()
     .setTitle("🗺️ Mapas del Día")
     .setDescription("Selecciona tu ciudad y registra tu mapa.\nMáximo 3 jugadores por mapa.")
@@ -98,6 +100,7 @@ function generarEmbed() {
   };
 
   for (const ciudad in mapas) {
+
     let texto = "";
 
     mapas[ciudad].forEach(mapa => {
@@ -128,6 +131,15 @@ function selectCiudad(customId) {
   );
 }
 
+async function actualizarPanel() {
+  if (!panelMessage) return;
+
+  await panelMessage.edit({
+    embeds: [generarEmbed()],
+    components: panelMessage.components
+  });
+}
+
 /* ================= EVENTOS ================= */
 
 client.on("interactionCreate", async interaction => {
@@ -136,7 +148,8 @@ client.on("interactionCreate", async interaction => {
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === "panel_mapas") {
-      await interaction.reply({
+
+      panelMessage = await interaction.reply({
         embeds: [generarEmbed()],
         components: [
           selectCiudad("registro_ciudad"),
@@ -146,8 +159,10 @@ client.on("interactionCreate", async interaction => {
               .setLabel("Dropear mapas")
               .setStyle(ButtonStyle.Danger)
           )
-        ]
+        ],
+        fetchReply: true
       });
+
       return;
     }
 
@@ -200,7 +215,7 @@ client.on("interactionCreate", async interaction => {
       }
 
       const opciones = Array.from(scouts).slice(0, 25).map(id => ({
-        label: interaction.guild.members.cache.get(id)?.user.username || `ID: ${id}`,
+        label: interaction.guild.members.cache.get(id)?.user.username || id,
         value: id
       }));
 
@@ -230,21 +245,20 @@ client.on("interactionCreate", async interaction => {
     }
 
     guardarDatos();
+    await actualizarPanel();
 
-    await interaction.update({
-      embeds: [generarEmbed()],
-      components: interaction.message.components
+    return interaction.reply({
+      content: "Has dropeado todos tus mapas.",
+      ephemeral: true
     });
-
-    return;
   }
 
   /* ===== SELECT ===== */
   if (interaction.isStringSelectMenu()) {
 
-    const ciudad = interaction.values[0];
-
     if (interaction.customId === "editar_ciudad") {
+
+      const ciudad = interaction.values[0];
 
       const modal = new ModalBuilder()
         .setCustomId(`modal_${ciudad}`)
@@ -262,8 +276,13 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.customId === "registro_ciudad") {
 
+      const ciudad = interaction.values[0];
+
       if (!mapas[ciudad].length) {
-        return interaction.reply({ content: "No hay mapas configurados.", ephemeral: true });
+        return interaction.reply({
+          content: "No hay mapas configurados.",
+          ephemeral: true
+        });
       }
 
       const selectMapa = new StringSelectMenuBuilder()
@@ -281,6 +300,29 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
+    if (interaction.customId.startsWith("registro_mapa_")) {
+
+      const ciudad = interaction.customId.replace("registro_mapa_", "");
+      const mapa = interaction.values[0];
+      const userId = interaction.user.id;
+
+      if (!registros[ciudad]) registros[ciudad] = {};
+      if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
+
+      if (!registros[ciudad][mapa].includes(userId) &&
+          registros[ciudad][mapa].length < 3) {
+
+        registros[ciudad][mapa].push(userId);
+        guardarDatos();
+        await actualizarPanel();
+      }
+
+      return interaction.reply({
+        content: "Registrado correctamente.",
+        ephemeral: true
+      });
+    }
+
     if (interaction.customId === "select_limpiar_scout") {
 
       const userId = interaction.values[0];
@@ -293,33 +335,12 @@ client.on("interactionCreate", async interaction => {
       }
 
       guardarDatos();
+      await actualizarPanel();
 
       return interaction.update({
         content: `Scout <@${userId}> removido correctamente.`,
         components: []
       });
-    }
-
-    if (interaction.customId.startsWith("registro_mapa_")) {
-
-      const ciudad = interaction.customId.replace("registro_mapa_", "");
-      const mapa = interaction.values[0];
-      const userId = interaction.user.id;
-
-      if (!registros[ciudad]) registros[ciudad] = {};
-      if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
-
-      if (!registros[ciudad][mapa].includes(userId) && registros[ciudad][mapa].length < 3) {
-        registros[ciudad][mapa].push(userId);
-        guardarDatos();
-      }
-
-      await interaction.update({
-        embeds: [generarEmbed()],
-        components: interaction.message.components
-      });
-
-      return;
     }
   }
 
@@ -337,6 +358,7 @@ client.on("interactionCreate", async interaction => {
     mapas[ciudad] = nuevos;
     registros[ciudad] = {};
     guardarDatos();
+    await actualizarPanel();
 
     return interaction.reply({
       content: "Mapas actualizados.",
