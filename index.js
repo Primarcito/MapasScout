@@ -25,7 +25,9 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-/* ================= DATOS ================= */
+/* ================= PERSISTENCIA ================= */
+
+const DATA_FILE = './data.json';
 
 let mapas = {
   "Lymhurst": [],
@@ -38,15 +40,19 @@ let mapas = {
 
 let registros = {};
 
-// 🔹 Cargar datos al iniciar
-if (fs.existsSync('data.json')) {
-  registros = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+function guardarDatos() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify({ mapas, registros }, null, 2));
 }
 
-// 🔹 Guardar datos
-function guardarDatos() {
-  fs.writeFileSync('data.json', JSON.stringify(registros, null, 2));
+function cargarDatos() {
+  if (fs.existsSync(DATA_FILE)) {
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    mapas = data.mapas || mapas;
+    registros = data.registros || {};
+  }
 }
+
+cargarDatos();
 
 /* ================= COMANDOS ================= */
 
@@ -126,10 +132,10 @@ function selectCiudad(customId) {
 
 client.on("interactionCreate", async interaction => {
 
+  /* ===== SLASH ===== */
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === "panel_mapas") {
-
       await interaction.reply({
         embeds: [generarEmbed()],
         components: [
@@ -142,7 +148,6 @@ client.on("interactionCreate", async interaction => {
           )
         ]
       });
-
       return;
     }
 
@@ -162,6 +167,51 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply({
         content: "Selecciona ciudad a editar:",
         components: [selectCiudad("editar_ciudad")],
+        ephemeral: true
+      });
+    }
+
+    if (interaction.commandName === "limpiar_scout") {
+
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.name.toLowerCase() === "prio1"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({
+          content: "Necesitas el rol prio1 para usar este comando.",
+          ephemeral: true
+        });
+      }
+
+      const scouts = new Set();
+
+      for (const ciudad in registros) {
+        for (const mapa in registros[ciudad]) {
+          registros[ciudad][mapa].forEach(id => scouts.add(id));
+        }
+      }
+
+      if (scouts.size === 0) {
+        return interaction.reply({
+          content: "No hay scouts registrados.",
+          ephemeral: true
+        });
+      }
+
+      const opciones = Array.from(scouts).slice(0, 25).map(id => ({
+        label: interaction.guild.members.cache.get(id)?.user.username || `ID: ${id}`,
+        value: id
+      }));
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId("select_limpiar_scout")
+        .setPlaceholder("Selecciona scout a remover")
+        .addOptions(opciones);
+
+      return interaction.reply({
+        content: "Selecciona el scout a remover:",
+        components: [new ActionRowBuilder().addComponents(select)],
         ephemeral: true
       });
     }
@@ -189,10 +239,26 @@ client.on("interactionCreate", async interaction => {
     return;
   }
 
-  /* ===== SELECT REGISTRO ===== */
+  /* ===== SELECT ===== */
   if (interaction.isStringSelectMenu()) {
 
     const ciudad = interaction.values[0];
+
+    if (interaction.customId === "editar_ciudad") {
+
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_${ciudad}`)
+        .setTitle(`Editar mapas - ${ciudad}`);
+
+      const input = new TextInputBuilder()
+        .setCustomId("mapas_input")
+        .setLabel("Pega mapas (uno por línea)")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
 
     if (interaction.customId === "registro_ciudad") {
 
@@ -215,6 +281,25 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
+    if (interaction.customId === "select_limpiar_scout") {
+
+      const userId = interaction.values[0];
+
+      for (const ciudad in registros) {
+        for (const mapa in registros[ciudad]) {
+          registros[ciudad][mapa] =
+            registros[ciudad][mapa].filter(id => id !== userId);
+        }
+      }
+
+      guardarDatos();
+
+      return interaction.update({
+        content: `Scout <@${userId}> removido correctamente.`,
+        components: []
+      });
+    }
+
     if (interaction.customId.startsWith("registro_mapa_")) {
 
       const ciudad = interaction.customId.replace("registro_mapa_", "");
@@ -224,11 +309,9 @@ client.on("interactionCreate", async interaction => {
       if (!registros[ciudad]) registros[ciudad] = {};
       if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
 
-      if (!registros[ciudad][mapa].includes(userId)) {
-        if (registros[ciudad][mapa].length < 3) {
-          registros[ciudad][mapa].push(userId);
-          guardarDatos();
-        }
+      if (!registros[ciudad][mapa].includes(userId) && registros[ciudad][mapa].length < 3) {
+        registros[ciudad][mapa].push(userId);
+        guardarDatos();
       }
 
       await interaction.update({
@@ -238,6 +321,27 @@ client.on("interactionCreate", async interaction => {
 
       return;
     }
+  }
+
+  /* ===== MODAL ===== */
+  if (interaction.isModalSubmit()) {
+
+    const ciudad = interaction.customId.replace("modal_", "");
+    const texto = interaction.fields.getTextInputValue("mapas_input");
+
+    const nuevos = texto
+      .split("\n")
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    mapas[ciudad] = nuevos;
+    registros[ciudad] = {};
+    guardarDatos();
+
+    return interaction.reply({
+      content: "Mapas actualizados.",
+      ephemeral: true
+    });
   }
 
 });
