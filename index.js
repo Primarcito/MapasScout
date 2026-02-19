@@ -47,7 +47,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("editar_mapas")
-    .setDescription("Editar mapas de una ciudad")
+    .setDescription("Editar mapas de una ciudad"),
+
+  new SlashCommandBuilder()
+    .setName("limpiar_scout")
+    .setDescription("Remover un scout registrado (solo prio1)")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -123,9 +127,14 @@ client.on("interactionCreate", async interaction => {
           selectCiudad("registro_ciudad"),
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setCustomId("salir_mapa")
-              .setLabel("Salir del mapa")
-              .setStyle(ButtonStyle.Danger)
+              .setCustomId("dropear_mapas")
+              .setLabel("Dropear mapas")
+              .setStyle(ButtonStyle.Danger),
+
+            new ButtonBuilder()
+              .setCustomId("volver_mapas")
+              .setLabel("Volver a mapas")
+              .setStyle(ButtonStyle.Success)
           )
         ],
         fetchReply: true
@@ -153,21 +162,74 @@ client.on("interactionCreate", async interaction => {
         ephemeral: true
       });
     }
+
+    if (interaction.commandName === "limpiar_scout") {
+
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.name.toLowerCase() === "prio1"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({
+          content: "Necesitas el rol prio1 para usar este comando.",
+          ephemeral: true
+        });
+      }
+
+      const scouts = new Set();
+
+      for (const ciudad in registros) {
+        for (const mapa in registros[ciudad]) {
+          registros[ciudad][mapa].forEach(id => scouts.add(id));
+        }
+      }
+
+      if (scouts.size === 0) {
+        return interaction.reply({
+          content: "No hay scouts registrados.",
+          ephemeral: true
+        });
+      }
+
+      const opciones = Array.from(scouts).slice(0, 25).map(id => ({
+        label: interaction.guild.members.cache.get(id)?.user.username || `ID: ${id}`,
+        value: id,
+        description: `ID: ${id}`
+      }));
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId("select_limpiar_scout")
+        .setPlaceholder("Selecciona scout a remover")
+        .addOptions(opciones);
+
+      return interaction.reply({
+        content: "Selecciona el scout a remover:",
+        components: [new ActionRowBuilder().addComponents(select)],
+        ephemeral: true
+      });
+    }
   }
 
-  /* ===== BOTÓN SALIR ===== */
+  /* ===== BOTONES ===== */
   if (interaction.isButton()) {
 
-    if (interaction.customId === "salir_mapa") {
+    // 🔴 DROPEAR MAPAS
+    if (interaction.customId === "dropear_mapas") {
 
       const userId = interaction.user.id;
       let eliminado = false;
 
       for (const ciudad in registros) {
         for (const mapa in registros[ciudad]) {
+
           const antes = registros[ciudad][mapa].length;
-          registros[ciudad][mapa] = registros[ciudad][mapa].filter(id => id !== userId);
-          if (registros[ciudad][mapa].length < antes) eliminado = true;
+
+          registros[ciudad][mapa] =
+            registros[ciudad][mapa].filter(id => id !== userId);
+
+          if (registros[ciudad][mapa].length < antes) {
+            eliminado = true;
+          }
         }
       }
 
@@ -177,8 +239,21 @@ client.on("interactionCreate", async interaction => {
 
       return interaction.reply({
         content: eliminado
-          ? "Has salido de todos los mapas."
+          ? "Has dropeado todos tus mapas."
           : "No estabas registrado en ningún mapa.",
+        ephemeral: true
+      });
+    }
+
+    // 🟢 VOLVER A MAPAS
+    if (interaction.customId === "volver_mapas") {
+
+      if (panelMessage) {
+        panelMessage.edit({ embeds: [generarEmbed()] });
+      }
+
+      return interaction.reply({
+        content: "Panel actualizado.",
         ephemeral: true
       });
     }
@@ -186,6 +261,37 @@ client.on("interactionCreate", async interaction => {
 
   /* ===== SELECT ===== */
   if (interaction.isStringSelectMenu()) {
+
+    if (interaction.customId === "select_limpiar_scout") {
+
+      const userId = interaction.values[0];
+      let eliminado = false;
+
+      for (const ciudad in registros) {
+        for (const mapa in registros[ciudad]) {
+
+          const antes = registros[ciudad][mapa].length;
+
+          registros[ciudad][mapa] =
+            registros[ciudad][mapa].filter(id => id !== userId);
+
+          if (registros[ciudad][mapa].length < antes) {
+            eliminado = true;
+          }
+        }
+      }
+
+      if (panelMessage) {
+        panelMessage.edit({ embeds: [generarEmbed()] });
+      }
+
+      return interaction.update({
+        content: eliminado
+          ? `Scout <@${userId}> removido correctamente.`
+          : "El scout no estaba registrado.",
+        components: []
+      });
+    }
 
     const ciudad = interaction.values[0];
 
