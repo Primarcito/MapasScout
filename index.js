@@ -128,12 +128,7 @@ client.on("interactionCreate", async interaction => {
             new ButtonBuilder()
               .setCustomId("dropear_mapas")
               .setLabel("Dropear mapas")
-              .setStyle(ButtonStyle.Danger),
-
-            new ButtonBuilder()
-              .setCustomId("volver_mapas")
-              .setLabel("Volver a mapas")
-              .setStyle(ButtonStyle.Success)
+              .setStyle(ButtonStyle.Danger)
           )
         ]
       });
@@ -208,8 +203,8 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
-  /* ===== BOTONES ===== */
-  if (interaction.isButton()) {
+  /* ===== BOTÓN DROPEAR ===== */
+  if (interaction.isButton() && interaction.customId === "dropear_mapas") {
 
     const userId = interaction.user.id;
     let eliminado = false;
