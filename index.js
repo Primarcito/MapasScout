@@ -1,4 +1,5 @@
 require('dotenv').config();
+const fs = require('fs');
 
 const {
   Client,
@@ -36,6 +37,16 @@ let mapas = {
 };
 
 let registros = {};
+
+// 🔹 Cargar datos al iniciar
+if (fs.existsSync('data.json')) {
+  registros = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+}
+
+// 🔹 Guardar datos
+function guardarDatos() {
+  fs.writeFileSync('data.json', JSON.stringify(registros, null, 2));
+}
 
 /* ================= COMANDOS ================= */
 
@@ -115,7 +126,6 @@ function selectCiudad(customId) {
 
 client.on("interactionCreate", async interaction => {
 
-  /* ===== SLASH ===== */
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === "panel_mapas") {
@@ -155,73 +165,21 @@ client.on("interactionCreate", async interaction => {
         ephemeral: true
       });
     }
-
-    if (interaction.commandName === "limpiar_scout") {
-
-      const tieneRol = interaction.member.roles.cache.some(
-        role => role.name.toLowerCase() === "prio1"
-      );
-
-      if (!tieneRol) {
-        return interaction.reply({
-          content: "Necesitas el rol prio1 para usar este comando.",
-          ephemeral: true
-        });
-      }
-
-      const scouts = new Set();
-
-      for (const ciudad in registros) {
-        for (const mapa in registros[ciudad]) {
-          registros[ciudad][mapa].forEach(id => scouts.add(id));
-        }
-      }
-
-      if (scouts.size === 0) {
-        return interaction.reply({
-          content: "No hay scouts registrados.",
-          ephemeral: true
-        });
-      }
-
-      const opciones = Array.from(scouts).slice(0, 25).map(id => ({
-        label: interaction.guild.members.cache.get(id)?.user.username || `ID: ${id}`,
-        value: id,
-        description: `ID: ${id}`
-      }));
-
-      const select = new StringSelectMenuBuilder()
-        .setCustomId("select_limpiar_scout")
-        .setPlaceholder("Selecciona scout a remover")
-        .addOptions(opciones);
-
-      return interaction.reply({
-        content: "Selecciona el scout a remover:",
-        components: [new ActionRowBuilder().addComponents(select)],
-        ephemeral: true
-      });
-    }
   }
 
   /* ===== BOTÓN DROPEAR ===== */
   if (interaction.isButton() && interaction.customId === "dropear_mapas") {
 
     const userId = interaction.user.id;
-    let eliminado = false;
 
     for (const ciudad in registros) {
       for (const mapa in registros[ciudad]) {
-
-        const antes = registros[ciudad][mapa].length;
-
         registros[ciudad][mapa] =
           registros[ciudad][mapa].filter(id => id !== userId);
-
-        if (registros[ciudad][mapa].length < antes) {
-          eliminado = true;
-        }
       }
     }
+
+    guardarDatos();
 
     await interaction.update({
       embeds: [generarEmbed()],
@@ -231,56 +189,10 @@ client.on("interactionCreate", async interaction => {
     return;
   }
 
-  /* ===== SELECT ===== */
+  /* ===== SELECT REGISTRO ===== */
   if (interaction.isStringSelectMenu()) {
 
-    if (interaction.customId === "select_limpiar_scout") {
-
-      const userId = interaction.values[0];
-      let eliminado = false;
-
-      for (const ciudad in registros) {
-        for (const mapa in registros[ciudad]) {
-
-          const antes = registros[ciudad][mapa].length;
-
-          registros[ciudad][mapa] =
-            registros[ciudad][mapa].filter(id => id !== userId);
-
-          if (registros[ciudad][mapa].length < antes) {
-            eliminado = true;
-          }
-        }
-      }
-
-      await interaction.update({
-        content: eliminado
-          ? `Scout <@${userId}> removido correctamente.`
-          : "El scout no estaba registrado.",
-        components: []
-      });
-
-      return;
-    }
-
     const ciudad = interaction.values[0];
-
-    if (interaction.customId === "editar_ciudad") {
-
-      const modal = new ModalBuilder()
-        .setCustomId(`modal_${ciudad}`)
-        .setTitle(`Editar mapas - ${ciudad}`);
-
-      const input = new TextInputBuilder()
-        .setCustomId("mapas_input")
-        .setLabel("Pega mapas (uno por línea)")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-      return interaction.showModal(modal);
-    }
 
     if (interaction.customId === "registro_ciudad") {
 
@@ -312,21 +224,12 @@ client.on("interactionCreate", async interaction => {
       if (!registros[ciudad]) registros[ciudad] = {};
       if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
 
-      if (registros[ciudad][mapa].includes(userId)) {
-        return interaction.reply({
-          content: "Ya estás en este mapa.",
-          ephemeral: true
-        });
+      if (!registros[ciudad][mapa].includes(userId)) {
+        if (registros[ciudad][mapa].length < 3) {
+          registros[ciudad][mapa].push(userId);
+          guardarDatos();
+        }
       }
-
-      if (registros[ciudad][mapa].length >= 3) {
-        return interaction.reply({
-          content: "Mapa lleno (3/3).",
-          ephemeral: true
-        });
-      }
-
-      registros[ciudad][mapa].push(userId);
 
       await interaction.update({
         embeds: [generarEmbed()],
@@ -335,26 +238,6 @@ client.on("interactionCreate", async interaction => {
 
       return;
     }
-  }
-
-  /* ===== MODAL ===== */
-  if (interaction.isModalSubmit()) {
-
-    const ciudad = interaction.customId.replace("modal_", "");
-    const texto = interaction.fields.getTextInputValue("mapas_input");
-
-    const nuevos = texto
-      .split("\n")
-      .map(l => l.trim())
-      .filter(l => l.length > 0);
-
-    mapas[ciudad] = nuevos;
-    registros[ciudad] = {};
-
-    await interaction.reply({
-      content: "Mapas actualizados.",
-      ephemeral: true
-    });
   }
 
 });
