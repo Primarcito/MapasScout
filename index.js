@@ -178,92 +178,142 @@ async function actualizarPanel() {
 client.on("interactionCreate", async interaction => {
 
   /* ===== SLASH ===== */
-  if (interaction.isChatInputCommand()) {
+if (interaction.isChatInputCommand()) {
 
-    if (interaction.commandName === "panel_mapas") {
+  if (interaction.commandName === "panel_mapas") {
 
-      panelMessage = await interaction.reply({
-        embeds: [generarEmbed()],
-        components: [
-          selectCiudad("registro_ciudad"),
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId("dropear_mapas")
-              .setLabel("Dropear mapas")
-              .setStyle(ButtonStyle.Danger)
-          )
-        ],
-        fetchReply: true
-      });
+    panelMessage = await interaction.reply({
+      embeds: [generarEmbed()],
+      components: [
+        selectCiudad("registro_ciudad"),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("dropear_mapas")
+            .setLabel("Dropear mapas")
+            .setStyle(ButtonStyle.Danger)
+        )
+      ],
+      fetchReply: true
+    });
 
-      return;
-    }
-
-    if (interaction.commandName === "editar_mapas") {
-
-      const tieneRol = interaction.member.roles.cache.some(
-        role => role.name.toLowerCase() === "prio1"
-      );
-
-      if (!tieneRol) {
-        return interaction.reply({
-          content: "Necesitas el rol prio1 para usar este comando.",
-          ephemeral: true
-        });
-      }
-
-      return interaction.reply({
-        content: "Selecciona ciudad a editar:",
-        components: [selectCiudad("editar_ciudad")],
-        ephemeral: true
-      });
-    }
-
-    if (interaction.commandName === "limpiar_scout") {
-
-      const tieneRol = interaction.member.roles.cache.some(
-        role => role.name.toLowerCase() === "prio1"
-      );
-
-      if (!tieneRol) {
-        return interaction.reply({
-          content: "Necesitas el rol prio1 para usar este comando.",
-          ephemeral: true
-        });
-      }
-
-      const scouts = new Set();
-
-      for (const ciudad in registros) {
-        for (const mapa in registros[ciudad]) {
-          registros[ciudad][mapa].forEach(id => scouts.add(id));
-        }
-      }
-
-      if (scouts.size === 0) {
-        return interaction.reply({
-          content: "No hay scouts registrados.",
-          ephemeral: true
-        });
-      }
-
-      const opciones = Array.from(scouts).slice(0, 25).map(id => ({
-        label: interaction.guild.members.cache.get(id)?.user.username || id,
-        value: id
-      }));
-
-      const select = new StringSelectMenuBuilder()
-        .setCustomId("select_limpiar_scout")
-        .setPlaceholder("Selecciona scout a remover")
-        .addOptions(opciones);
-
-      return interaction.reply({
-        content: "Selecciona el scout a remover:",
-        components: [new ActionRowBuilder().addComponents(select)],
-        ephemeral: true
-      });
-    }
+    return;
   }
+
+  if (interaction.commandName === "editar_mapas") {
+
+    const tieneRol = interaction.member.roles.cache.some(
+      role => role.name.toLowerCase() === "prio1"
+    );
+
+    if (!tieneRol) {
+      return interaction.reply({
+        content: "Necesitas el rol prio1 para usar este comando.",
+        ephemeral: true
+      });
+    }
+
+    return interaction.reply({
+      content: "Selecciona ciudad a editar:",
+      components: [selectCiudad("editar_ciudad")],
+      ephemeral: true
+    });
+  }
+
+  if (interaction.commandName === "limpiar_scout") {
+
+    const tieneRol = interaction.member.roles.cache.some(
+      role => role.name.toLowerCase() === "prio1"
+    );
+
+    if (!tieneRol) {
+      return interaction.reply({
+        content: "Necesitas el rol prio1 para usar este comando.",
+        ephemeral: true
+      });
+    }
+
+    const scouts = new Set();
+
+    for (const ciudad in registros) {
+      for (const mapa in registros[ciudad]) {
+        registros[ciudad][mapa].forEach(id => scouts.add(id));
+      }
+    }
+
+    if (scouts.size === 0) {
+      return interaction.reply({
+        content: "No hay scouts registrados.",
+        ephemeral: true
+      });
+    }
+
+    const opciones = Array.from(scouts).slice(0, 25).map(id => ({
+      label: interaction.guild.members.cache.get(id)?.user?.username || id,
+      value: id
+    }));
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId("select_limpiar_scout")
+      .setPlaceholder("Selecciona scout a remover")
+      .addOptions(opciones);
+
+    return interaction.reply({
+      content: "Selecciona el scout a remover:",
+      components: [new ActionRowBuilder().addComponents(select)],
+      ephemeral: true
+    });
+  }
+
+  if (interaction.commandName === "top_scouts") {
+
+    if (historialScouts.length === 0) {
+      return interaction.reply({
+        content: "Aún no hay scouts registrados.",
+        ephemeral: true
+      });
+    }
+
+    const ranking = {};
+
+    historialScouts.forEach(s => {
+      if (!ranking[s.userId]) ranking[s.userId] = 0;
+      ranking[s.userId] += s.duracionMin;
+    });
+
+    const top = Object.entries(ranking)
+      .sort((a,b) => b[1] - a[1])
+      .slice(0,10);
+
+    let texto = "";
+
+    top.forEach(([userId, minutos], i) => {
+
+      const horas = Math.floor(minutos / 60);
+      const mins = minutos % 60;
+
+      const tiempo =
+        horas > 0 ? `${horas}h ${mins}m` : `${mins}m`;
+
+      const medal =
+        i === 0 ? "🥇" :
+        i === 1 ? "🥈" :
+        i === 2 ? "🥉" :
+        `${i+1}.`;
+
+      texto += `${medal} <@${userId}> — ${tiempo}\n`;
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 Ranking Scouts")
+      .setColor(0xFFD700)
+      .setDescription(texto);
+
+    return interaction.reply({
+      embeds: [embed]
+    });
+  }
+
+}
 
   /* ===== BOTÓN DROPEAR ===== */
   if (interaction.isButton() && interaction.customId === "dropear_mapas") {
