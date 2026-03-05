@@ -28,6 +28,10 @@ const client = new Client({
 /* ================= PERSISTENCIA ================= */
 
 const DATA_FILE = './data.json';
+const SCOUT_FILE = './scouts.json';
+
+let scoutsActivos = {};
+let historialScouts = [];
 
 let mapas = {
   "Lymhurst": [],
@@ -54,6 +58,29 @@ function cargarDatos() {
 }
 
 cargarDatos();
+function cargarScouts() {
+  if (fs.existsSync(SCOUT_FILE)) {
+    const data = JSON.parse(fs.readFileSync(SCOUT_FILE, 'utf8'));
+    scoutsActivos = data.activos || {};
+    historialScouts = data.historial || [];
+  }
+}
+
+function guardarScouts() {
+  fs.writeFileSync(
+    SCOUT_FILE,
+    JSON.stringify(
+      {
+        activos: scoutsActivos,
+        historial: historialScouts
+      },
+      null,
+      2
+    )
+  );
+}
+
+cargarScouts();
 
 /* ================= COMANDOS ================= */
 
@@ -68,7 +95,10 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("limpiar_scout")
-    .setDescription("Remover un scout registrado (solo prio1)")
+    .setDescription("Remover un scout registrado (solo prio1)"),
+  new SlashCommandBuilder()
+    .setName("top_scouts")
+    .setDescription("Ranking Scouts")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -86,7 +116,7 @@ function generarEmbed() {
 
   const embed = new EmbedBuilder()
     .setTitle("🗺️ Mapas del Día")
-    .setDescription("Selecciona tu ciudad y registra tu mapa.\nMáximo 3 jugadores por mapa.")
+    .setDescription("Selecciona tu ciudad y registra tu mapa.\nMáximo 5 jugadores por mapa.")
     .setColor(0x8B5CF6)
     .setFooter({ text: `Actualizado • ${new Date().toLocaleDateString()}` });
 
@@ -99,22 +129,25 @@ function generarEmbed() {
     "Zona Roja": "🔥"
   };
 
-  for (const ciudad in mapas) {
+for (const ciudad in mapas) {
 
-    let texto = "";
+  if (!mapas[ciudad] || mapas[ciudad].length === 0) continue;
 
-    mapas[ciudad].forEach(mapa => {
-      const users = registros[ciudad]?.[mapa] || [];
-      const menciones = users.map(id => `<@${id}>`).join(" ");
-      texto += `- **${mapa}** → ${menciones || "—"}\n`;
-    });
+  let texto = "";
 
-    embed.addFields({
-      name: `${iconos[ciudad]} ${ciudad}`,
-      value: texto || "Sin mapas configurados",
-      inline: false
-    });
-  }
+  mapas[ciudad].forEach(mapa => {
+    const users = registros[ciudad]?.[mapa] || [];
+    const menciones = users.map(id => `<@${id}>`).join(" ");
+    texto += `- **${mapa}** → ${menciones || "—"}\n`;
+  });
+
+  embed.addFields({
+    name: `${iconos[ciudad]} ${ciudad}`,
+    value: texto,
+    inline: false
+  });
+
+}
 
   return embed;
 }
@@ -235,23 +268,42 @@ client.on("interactionCreate", async interaction => {
   /* ===== BOTÓN DROPEAR ===== */
   if (interaction.isButton() && interaction.customId === "dropear_mapas") {
 
-    const userId = interaction.user.id;
+  const userId = interaction.user.id;
 
-    for (const ciudad in registros) {
-      for (const mapa in registros[ciudad]) {
-        registros[ciudad][mapa] =
-          registros[ciudad][mapa].filter(id => id !== userId);
-      }
-    }
+  if (scoutsActivos[userId]) {
 
-    guardarDatos();
-    await actualizarPanel();
+    const scout = scoutsActivos[userId];
+    const fin = Date.now();
+    const duracionMin = Math.floor((fin - scout.inicio) / 60000);
 
-    return interaction.reply({
-      content: "Has dropeado todos tus mapas.",
-      ephemeral: true
+    historialScouts.push({
+      userId,
+      ciudad: scout.ciudad,
+      mapa: scout.mapa,
+      inicio: scout.inicio,
+      fin,
+      duracionMin
     });
+
+    delete scoutsActivos[userId];
+    guardarScouts();
   }
+
+  for (const ciudad in registros) {
+    for (const mapa in registros[ciudad]) {
+      registros[ciudad][mapa] =
+        registros[ciudad][mapa].filter(id => id !== userId);
+    }
+  }
+
+  guardarDatos();
+  await actualizarPanel();
+
+  return interaction.reply({
+    content: "Has dropeado todos tus mapas.",
+    ephemeral: true
+  });
+}
 
   /* ===== SELECT ===== */
   if (interaction.isStringSelectMenu()) {
@@ -285,37 +337,71 @@ client.on("interactionCreate", async interaction => {
         });
       }
 
-      const selectMapa = new StringSelectMenuBuilder()
-        .setCustomId(`registro_mapa_${ciudad}`)
-        .setPlaceholder("Selecciona mapa")
-        .addOptions(mapas[ciudad].map(m => ({
-          label: m,
-          value: m
-        })));
+const filas = [];
+let fila = new ActionRowBuilder();
 
-      return interaction.reply({
-        content: `Mapas en ${ciudad}:`,
-        components: [new ActionRowBuilder().addComponents(selectMapa)],
-        ephemeral: true
-      });
+mapas[ciudad].forEach((mapa, i) => {
+
+  if (i % 5 === 0 && i !== 0) {
+    filas.push(fila);
+    fila = new ActionRowBuilder();
+  }
+
+  fila.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`registro_btn_${ciudad}__${mapa}`)
+      .setLabel(mapa)
+      .setStyle(ButtonStyle.Primary)
+  );
+
+});
+
+filas.push(fila);
+
+return interaction.reply({
+  content: `Mapas en ${ciudad}:`,
+  components: filas,
+  ephemeral: true
+});
     }
 
-    if (interaction.customId.startsWith("registro_mapa_")) {
+    if (interaction.isButton() && interaction.customId.startsWith("registro_btn_")) {
 
-      const ciudad = interaction.customId.replace("registro_mapa_", "");
-      const mapa = interaction.values[0];
-      const userId = interaction.user.id;
+  const partes = interaction.customId.replace("registro_btn_", "").split("__");
 
-      if (!registros[ciudad]) registros[ciudad] = {};
-      if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
+  const ciudad = partes[0];
+  const mapa = partes[1];
+  const userId = interaction.user.id;
 
-      if (!registros[ciudad][mapa].includes(userId) &&
-          registros[ciudad][mapa].length < 3) {
+  if (!registros[ciudad]) registros[ciudad] = {};
+  if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
 
-        registros[ciudad][mapa].push(userId);
-        guardarDatos();
-        await actualizarPanel();
-      }
+  if (!registros[ciudad][mapa].includes(userId) &&
+      registros[ciudad][mapa].length < 5) {
+
+    registros[ciudad][mapa].push(userId);
+
+    scoutsActivos[userId] = {
+      ciudad,
+      mapa,
+      inicio: Date.now()
+    };
+
+    guardarDatos();
+    guardarScouts();
+    await actualizarPanel();
+  }
+
+  return interaction.reply({
+    content: `Registrado en **${mapa}**`,
+    ephemeral: true
+  });
+}
+
+  guardarDatos();
+  guardarScouts();
+  await actualizarPanel();
+}
 
       return interaction.reply({
         content: "Registrado correctamente.",
