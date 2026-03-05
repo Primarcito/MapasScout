@@ -306,66 +306,90 @@ client.on("interactionCreate", async interaction => {
 }
 
   /* ===== SELECT ===== */
-  if (interaction.isStringSelectMenu()) {
+if (interaction.isStringSelectMenu()) {
 
-    if (interaction.customId === "editar_ciudad") {
+  if (interaction.customId === "editar_ciudad") {
 
-      const ciudad = interaction.values[0];
+    const ciudad = interaction.values[0];
 
-      const modal = new ModalBuilder()
-        .setCustomId(`modal_${ciudad}`)
-        .setTitle(`Editar mapas - ${ciudad}`);
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_${ciudad}`)
+      .setTitle(`Editar mapas - ${ciudad}`);
 
-      const input = new TextInputBuilder()
-        .setCustomId("mapas_input")
-        .setLabel("Pega mapas (uno por línea)")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
+    const input = new TextInputBuilder()
+      .setCustomId("mapas_input")
+      .setLabel("Pega mapas (uno por línea)")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true);
 
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-      return interaction.showModal(modal);
-    }
-
-    if (interaction.customId === "registro_ciudad") {
-
-      const ciudad = interaction.values[0];
-
-      if (!mapas[ciudad].length) {
-        return interaction.reply({
-          content: "No hay mapas configurados.",
-          ephemeral: true
-        });
-      }
-
-const filas = [];
-let fila = new ActionRowBuilder();
-
-mapas[ciudad].forEach((mapa, i) => {
-
-  if (i % 5 === 0 && i !== 0) {
-    filas.push(fila);
-    fila = new ActionRowBuilder();
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
   }
 
-  fila.addComponents(
-    new ButtonBuilder()
-      .setCustomId(`registro_btn_${ciudad}__${mapa}`)
-      .setLabel(mapa)
-      .setStyle(ButtonStyle.Primary)
-  );
+  if (interaction.customId === "registro_ciudad") {
 
-});
+    const ciudad = interaction.values[0];
 
-filas.push(fila);
-
-return interaction.reply({
-  content: `Mapas en ${ciudad}:`,
-  components: filas,
-  ephemeral: true
-});
+    if (!mapas[ciudad].length) {
+      return interaction.reply({
+        content: "No hay mapas configurados.",
+        ephemeral: true
+      });
     }
 
-    if (interaction.isButton() && interaction.customId.startsWith("registro_btn_")) {
+    const filas = [];
+    let fila = new ActionRowBuilder();
+
+    mapas[ciudad].forEach((mapa, i) => {
+
+      if (i % 5 === 0 && i !== 0) {
+        filas.push(fila);
+        fila = new ActionRowBuilder();
+      }
+
+      fila.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`registro_btn_${ciudad}__${mapa}`)
+          .setLabel(mapa)
+          .setStyle(ButtonStyle.Primary)
+      );
+
+    });
+
+    filas.push(fila);
+
+    return interaction.reply({
+      content: `Mapas en ${ciudad}:`,
+      components: filas,
+      ephemeral: true
+    });
+  }
+
+  if (interaction.customId === "select_limpiar_scout") {
+
+    const userId = interaction.values[0];
+
+    for (const ciudad in registros) {
+      for (const mapa in registros[ciudad]) {
+        registros[ciudad][mapa] =
+          registros[ciudad][mapa].filter(id => id !== userId);
+      }
+    }
+
+    guardarDatos();
+    await actualizarPanel();
+
+    return interaction.update({
+      content: `Scout <@${userId}> removido correctamente.`,
+      components: []
+    });
+
+  }
+
+}
+
+/* ===== BOTÓN REGISTRO MAPA ===== */
+if (interaction.isButton() && interaction.customId.startsWith("registro_btn_")) {
 
   const partes = interaction.customId.replace("registro_btn_", "").split("__");
 
@@ -395,38 +419,6 @@ return interaction.reply({
   return interaction.reply({
     content: `Registrado en **${mapa}**`,
     ephemeral: true
-  });
-}
-
-  guardarDatos();
-  guardarScouts();
-await actualizarPanel();
-}
-
-return interaction.reply({
-  content: "Registrado correctamente.",
-  ephemeral: true
-});
-
-}
-
-if (interaction.customId === "select_limpiar_scout") {
-
-  const userId = interaction.values[0];
-
-  for (const ciudad in registros) {
-    for (const mapa in registros[ciudad]) {
-      registros[ciudad][mapa] =
-        registros[ciudad][mapa].filter(id => id !== userId);
-    }
-  }
-
-  guardarDatos();
-  await actualizarPanel();
-
-  return interaction.update({
-    content: `Scout <@${userId}> removido correctamente.`,
-    components: []
   });
 
 }
