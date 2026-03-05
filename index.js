@@ -408,7 +408,7 @@ return interaction.reply({
   ephemeral: true
 });
 
-} // ← cerrar el if anterior aquí
+}
 
 if (interaction.customId === "select_limpiar_scout") {
 
