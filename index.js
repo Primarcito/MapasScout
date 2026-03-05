@@ -400,34 +400,36 @@ return interaction.reply({
 
   guardarDatos();
   guardarScouts();
-  await actualizarPanel();
+await actualizarPanel();
 }
 
-      return interaction.reply({
-        content: "Registrado correctamente.",
-        ephemeral: true
-      });
-    
-    if (interaction.customId === "select_limpiar_scout") {
+return interaction.reply({
+  content: "Registrado correctamente.",
+  ephemeral: true
+});
 
-      const userId = interaction.values[0];
+} // ← cerrar el if anterior aquí
 
-      for (const ciudad in registros) {
-        for (const mapa in registros[ciudad]) {
-          registros[ciudad][mapa] =
-            registros[ciudad][mapa].filter(id => id !== userId);
-        }
-      }
+if (interaction.customId === "select_limpiar_scout") {
 
-      guardarDatos();
-      await actualizarPanel();
+  const userId = interaction.values[0];
 
-      return interaction.update({
-        content: `Scout <@${userId}> removido correctamente.`,
-        components: []
-      });
+  for (const ciudad in registros) {
+    for (const mapa in registros[ciudad]) {
+      registros[ciudad][mapa] =
+        registros[ciudad][mapa].filter(id => id !== userId);
     }
   }
+
+  guardarDatos();
+  await actualizarPanel();
+
+  return interaction.update({
+    content: `Scout <@${userId}> removido correctamente.`,
+    components: []
+  });
+
+}
 
   /* ===== MODAL ===== */
   if (interaction.isModalSubmit()) {
