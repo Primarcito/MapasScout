@@ -407,8 +407,7 @@ return interaction.reply({
         content: "Registrado correctamente.",
         ephemeral: true
       });
-    }
-
+    
     if (interaction.customId === "select_limpiar_scout") {
 
       const userId = interaction.values[0];
