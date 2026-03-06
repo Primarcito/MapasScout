@@ -29,6 +29,10 @@ const client = new Client({
 
 const DATA_FILE = './data.json';
 const SCOUT_FILE = './scouts.json';
+const PANEL_FILE = './panel.json';
+
+let panelChannelId = null;
+let panelMessageId = null;
 
 let scoutsActivos = {};
 let historialScouts = [];
@@ -82,6 +86,33 @@ function guardarScouts() {
 }
 
 cargarScouts();
+
+function guardarPanel() {
+
+  fs.writeFileSync(
+    PANEL_FILE,
+    JSON.stringify({
+      channelId: panelChannelId,
+      messageId: panelMessageId
+    }, null, 2)
+  );
+
+}
+
+function cargarPanel() {
+
+  if (fs.existsSync(PANEL_FILE)) {
+
+    const data = JSON.parse(fs.readFileSync(PANEL_FILE, 'utf8'));
+
+    panelChannelId = data.channelId;
+    panelMessageId = data.messageId;
+
+  }
+
+}
+
+cargarPanel(); 
 
 /* ================= COMANDOS ================= */
 
@@ -207,6 +238,10 @@ client.on("interactionCreate", async interaction => {
         ],
         fetchReply: true
       });
+
+      panelChannelId = panelMessage.channel.id;
+      panelMessageId = panelMessage.id;
+      guardarPanel();
 
       return;
     }
@@ -508,6 +543,29 @@ client.on("interactionCreate", async interaction => {
       content: "Mapas actualizados.",
       ephemeral: true
     });
+  }
+
+});
+
+client.once("ready", async () => {
+
+  console.log(`Bot listo: ${client.user.tag}`);
+
+  try {
+
+    if (panelChannelId && panelMessageId) {
+
+      const channel = await client.channels.fetch(panelChannelId);
+      panelMessage = await channel.messages.fetch(panelMessageId);
+
+      console.log("Panel recuperado correctamente");
+
+    }
+
+  } catch (err) {
+
+    console.log("No se pudo recuperar el panel");
+
   }
 
 });
