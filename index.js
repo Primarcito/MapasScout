@@ -188,22 +188,24 @@ function generarEmbed() {
 /* ===== SELECT CIUDAD FILTRADO ===== */
 
 function selectCiudad(customId) {
-
-  const ciudadesDisponibles = Object.keys(mapas)
-    .filter(ciudad => mapas[ciudad] && mapas[ciudad].length > 0);
+  const ciudades =
+    customId === "editar_ciudad"
+      ? Object.keys(mapas)
+      : Object.keys(mapas).filter(
+          ciudad => mapas[ciudad] && mapas[ciudad].length > 0
+        );
 
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(customId)
       .setPlaceholder("Selecciona ciudad")
       .addOptions(
-        ciudadesDisponibles.map(ciudad => ({
+        ciudades.map(ciudad => ({
           label: ciudad,
           value: ciudad
         }))
       )
   );
-
 }
 
 async function actualizarPanel() {
