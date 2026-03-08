@@ -549,7 +549,7 @@ client.on("interactionCreate", async interaction => {
 
 });
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
 
   console.log(`Bot listo: ${client.user.tag}`);
 
