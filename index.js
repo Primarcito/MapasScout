@@ -638,8 +638,8 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
+    await interaction.reply({ content: msg, ephemeral: true });
     procesando.delete(userId);
-    return interaction.reply({ content: msg, ephemeral: true });
   }
 
   /* ===== BOTÓN: VOLVER A MAPAS ===== */
