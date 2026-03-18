@@ -770,6 +770,11 @@ client.once("clientReady", async () => {
     }
   } catch (err) {
     console.log("No se pudo recuperar el panel:", err.message);
+    panelChannelId = null;
+    panelMessageId = null;
+    panelMessage = null;
+    guardarPanel();
+    console.log("Panel.json limpiado, usar /panel_mapas para recrear.");
   }
 
   programarReset();
