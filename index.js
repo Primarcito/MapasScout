@@ -165,16 +165,14 @@ function generarEmbed() {
 
     mapas[ciudad].forEach(mapa => {
       const users = registros[ciudad]?.[mapa] || [];
-      const count = users.length;
       const menciones = users.map(id => `<@${id}>`).join(" ");
-      const lleno = count >= 5;
-      const indicador = lleno ? "🔴" : `(${count}/5)`;
-      texto += `${indicador} **${mapa}** → ${menciones || "—"}\n`;
+      const lleno = users.length >= 5;
+      texto += `${lleno ? "🔴 " : ""}**${mapa}** → ${menciones}\n`;
     });
 
     embed.addFields({
       name: `${iconos[ciudad] || "📍"} ${ciudad}`,
-      value: texto,
+      value: texto + "\u200b",
       inline: false
     });
   }
