@@ -27,6 +27,11 @@ const client = new Client({
 
 const procesando = new Set();
 
+const SCOUT_ROLE_ID = "1422971680480956547";
+
+// alertasMapas[ciudad__mapa] = { messageId, timeout20min, timeout90min }
+const alertasMapas = {};
+
 /* ================= PERSISTENCIA ================= */
 
 const DATA_FILE = './data.json';
@@ -400,9 +405,12 @@ async function ejecutarReset() {
 
     if (panelMessage) {
       try {
-        await panelMessage.channel.send(
+        const resetMsg = await panelMessage.channel.send(
           "⚠️ **Reset cancelado** — Los mapas fueron actualizados hoy. El panel sigue vigente."
         );
+        setTimeout(async () => {
+          try { await resetMsg.delete(); } catch (e) {}
+        }, 20 * 60 * 1000);
       } catch (err) {
         console.error("Error enviando aviso:", err);
       }
@@ -434,6 +442,88 @@ async function ejecutarReset() {
   }
 
   console.log("Reset diario completado.");
+}
+
+/* ================= ALERTAS MAPAS ================= */
+
+async function verificarMapaVacio(ciudad, mapa) {
+  const users = registros[ciudad]?.[mapa] || [];
+  const key = `${ciudad}__${mapa}`;
+
+  if (users.length === 0) {
+    // Mapa quedó vacío - mandar alerta
+    await enviarAlertaMapa(ciudad, mapa, key);
+  } else {
+    // Alguien se anotó - limpiar alerta si existe
+    await limpiarAlertaMapa(key);
+  }
+}
+
+async function enviarAlertaMapa(ciudad, mapa, key) {
+  // Si ya hay una alerta activa para este mapa, no mandar otra
+  if (alertasMapas[key]) return;
+
+  if (!panelMessage) return;
+
+  try {
+    const msg = await panelMessage.channel.send(
+      `<@&${SCOUT_ROLE_ID}> ⚠️ **${mapa}** sin scout, alguien que se anote pes`
+    );
+
+    const timeout20 = setTimeout(async () => {
+      await limpiarAlertaMapa(key);
+    }, 20 * 60 * 1000);
+
+    const timeout90 = setTimeout(async () => {
+      // A la 1h30 mandar recordatorio con todos los mapas sin scouts
+      await enviarRecordatorioMapasVacios();
+    }, 90 * 60 * 1000);
+
+    alertasMapas[key] = { messageId: msg.id, timeout20, timeout90 };
+  } catch (err) {
+    console.error("Error enviando alerta de mapa vacío:", err);
+  }
+}
+
+async function limpiarAlertaMapa(key) {
+  const alerta = alertasMapas[key];
+  if (!alerta) return;
+
+  clearTimeout(alerta.timeout20);
+  clearTimeout(alerta.timeout90);
+
+  if (panelMessage) {
+    try {
+      const msg = await panelMessage.channel.messages.fetch(alerta.messageId);
+      await msg.delete();
+    } catch (err) {
+      // Mensaje ya borrado, ignorar
+    }
+  }
+
+  delete alertasMapas[key];
+}
+
+async function enviarRecordatorioMapasVacios() {
+  if (!panelMessage) return;
+
+  const vacios = [];
+  for (const ciudad in mapas) {
+    for (const mapa of mapas[ciudad]) {
+      const users = registros[ciudad]?.[mapa] || [];
+      if (users.length === 0) vacios.push(mapa);
+    }
+  }
+
+  if (vacios.length === 0) return;
+
+  try {
+    await panelMessage.channel.send(
+      `<@&${SCOUT_ROLE_ID}> ⚠️ Estos mapas llevan rato solos causitas: ${vacios.map(m => `**${m}**`).join(", ")}`
+    );
+  } catch (err) {
+    console.error("Error enviando recordatorio:", err);
+  }
 }
 
 /* ================= EVENTOS ================= */
@@ -594,6 +684,7 @@ client.on("interactionCreate", async interaction => {
       guardarDatos();
       guardarScouts();
       await actualizarPanel();
+      await verificarMapaVacio(ciudad, mapa);
 
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `❌ Saliste de **${mapa}**\n\n` + resp.content;
@@ -609,9 +700,10 @@ client.on("interactionCreate", async interaction => {
       guardarDatos();
       guardarScouts();
       await actualizarPanel();
+      await verificarMapaVacio(ciudad, mapa);
 
       const resp = respuestaMapas(ciudad, userId);
-      resp.content = `✅ Registrado en **${mapa}**\n\n` + resp.content;
+      resp.content = `✅ Listo causa, ya estás en **${mapa}**\n\n` + resp.content;
       return interaction.update(resp);
     } else {
       // Lleno
@@ -636,15 +728,28 @@ client.on("interactionCreate", async interaction => {
     guardarUltimosMapas(userId);
     const tieneMaps = ultimosMapas[userId]?.length > 0;
 
+    // Guardar qué mapas tenía antes de borrar
+    const mapasDropeados = [];
+    for (const c in registros) {
+      for (const m in registros[c]) {
+        if (registros[c][m].includes(userId)) mapasDropeados.push({ ciudad: c, mapa: m });
+      }
+    }
+
     cerrarScoutsActivos(userId);
     borrarRegistrosUsuario(userId);
     guardarDatos();
     guardarScouts();
     await actualizarPanel();
 
+    // Verificar alertas para cada mapa que abandonó
+    for (const { ciudad, mapa } of mapasDropeados) {
+      await verificarMapaVacio(ciudad, mapa);
+    }
+
     const msg = tieneMaps
-      ? "🔴 Dropeaste todos tus mapas.\nUsá **VOLVER A MIS MAPAS** en el panel para volver."
-      : "🔴 Dropeaste todos tus mapas.";
+      ? "🔴 Te borraste de todo pata.\nUsá **VOLVER A MIS MAPAS** en el panel para volver."
+      : "🔴 Te borraste de todo pata.";
 
     await interaction.editReply({ content: msg });
     procesando.delete(userId);
@@ -657,7 +762,7 @@ client.on("interactionCreate", async interaction => {
     const lista = ultimosMapas[userId];
 
     if (!lista || lista.length === 0) {
-      return interaction.reply({ content: "No tenés mapas guardados para volver.", ephemeral: true });
+      return interaction.reply({ content: "No tienes nada guardado pe.", ephemeral: true });
     }
 
     const anotados = [];
@@ -694,7 +799,7 @@ client.on("interactionCreate", async interaction => {
     await actualizarPanel();
 
     let respuesta = "";
-    if (anotados.length > 0) respuesta += `✅ Volviste a:\n${anotados.map(m => `• ${m}`).join("\n")}`;
+    if (anotados.length > 0) respuesta += `✅ Ahí estás de vuelta hermano:\n${anotados.map(m => `• ${m}`).join("\n")}`;
     if (saltados.length > 0) respuesta += `\n⚠️ No se pudo:\n${saltados.map(m => `• ${m}`).join("\n")}`;
     if (!respuesta) respuesta = "No se pudo volver a ningún mapa.";
 
