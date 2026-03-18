@@ -201,7 +201,7 @@ function componentesPanel() {
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("dropear_mapas")
-        .setLabel("DROPEAR")
+        .setLabel("DROPEAR MAPAS")
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId("volver_mapas_panel")
