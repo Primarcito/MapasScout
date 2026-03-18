@@ -602,7 +602,7 @@ client.on("interactionCreate", async interaction => {
     const lista = ultimosMapas[userId];
 
     if (!lista || lista.length === 0) {
-      return interaction.update({ content: "No tenés mapas guardados para volver.", components: [] });
+      return interaction.reply({ content: "No tenés mapas guardados para volver.", ephemeral: true });
     }
 
     const anotados = [];
@@ -643,7 +643,7 @@ client.on("interactionCreate", async interaction => {
     if (saltados.length > 0) respuesta += `\n⚠️ No se pudo:\n${saltados.map(m => `• ${m}`).join("\n")}`;
     if (!respuesta) respuesta = "No se pudo volver a ningún mapa.";
 
-    return interaction.update({ content: respuesta, components: [] });
+    return interaction.reply({ content: respuesta, ephemeral: true });
   }
 
   /* ===== SELECT: EDITAR CIUDAD ===== */
