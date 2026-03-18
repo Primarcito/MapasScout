@@ -179,7 +179,7 @@ function generarEmbed() {
 
     embed.addFields({
       name: `${iconos[ciudad] || "📍"} ${ciudad}`,
-      value: "\u200b\n" + texto,
+      value: texto + "\n\u200b",
       inline: false
     });
   }
