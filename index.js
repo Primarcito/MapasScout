@@ -587,6 +587,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply({ content: "⏳ Espera un momento...", ephemeral: true });
     }
     procesando.add(userId);
+    await interaction.deferReply({ ephemeral: true });
 
     // Guardar mapas antes de dropear
     guardarUltimosMapas(userId);
@@ -638,7 +639,7 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    await interaction.reply({ content: msg, ephemeral: true });
+    await interaction.editReply({ content: msg });
     procesando.delete(userId);
   }
 
