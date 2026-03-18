@@ -25,6 +25,8 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
+const procesando = new Set();
+
 /* ================= PERSISTENCIA ================= */
 
 const DATA_FILE = './data.json';
@@ -581,6 +583,11 @@ client.on("interactionCreate", async interaction => {
   if (interaction.isButton() && interaction.customId === "dropear_mapas") {
     const userId = interaction.user.id;
 
+    if (procesando.has(userId)) {
+      return interaction.reply({ content: "⏳ Espera un momento...", ephemeral: true });
+    }
+    procesando.add(userId);
+
     // Guardar mapas antes de dropear
     guardarUltimosMapas(userId);
     const lista = ultimosMapas[userId] ? [...ultimosMapas[userId]] : [];
@@ -631,6 +638,7 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
+    procesando.delete(userId);
     return interaction.reply({ content: msg, ephemeral: true });
   }
 
