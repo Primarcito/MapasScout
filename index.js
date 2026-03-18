@@ -149,8 +149,8 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 function generarEmbed() {
   const embed = new EmbedBuilder()
     .setTitle("🗺️ Mapas del Día")
-    .setDescription("Usá el botón **Anotarse** para registrarte en un mapa.\nMáximo 5 scouts por mapa.")
-    .setColor(0x8B5CF6)
+    .setDescription("Usa el botón **Anotarse** para registrarte en un mapa.\nMáximo 5 scouts por mapa.")
+    .setColor(0xe91e63)
     .setFooter({ text: `Actualizado • ${new Date().toLocaleString('es-AR', { timeZone: 'UTC' })} UTC` });
 
   const iconos = {
