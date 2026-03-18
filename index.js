@@ -202,15 +202,15 @@ function componentesPanel() {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("abrir_anotarse")
-        .setLabel("ANOTARSE")
+        .setLabel("Anotarse")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("dropear_mapas")
-        .setLabel("DROPEAR MAPAS")
+        .setLabel("Dropear Mapas")
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId("volver_mapas_panel")
-        .setLabel("VOLVER A MIS MAPAS")
+        .setLabel("Volver a mis Mapas")
         .setStyle(ButtonStyle.Success)
     )
   ];
@@ -467,7 +467,7 @@ async function enviarAlertaMapa(ciudad, mapa, key) {
 
   try {
     const msg = await panelMessage.channel.send(
-      `<@&${SCOUT_ROLE_ID}> ⚠️ **${mapa}** sin scout, alguien que se anote pes`
+      `⚠️ **${mapa}** sin scout, alguien que se anote pes`
     );
 
     const timeout20 = setTimeout(async () => {
@@ -477,7 +477,7 @@ async function enviarAlertaMapa(ciudad, mapa, key) {
     const timeout90 = setTimeout(async () => {
       // A la 1h30 mandar recordatorio con todos los mapas sin scouts
       await enviarRecordatorioMapasVacios();
-    }, 90 * 60 * 1000);
+    }, 150 * 60 * 1000);
 
     alertasMapas[key] = { messageId: msg.id, timeout20, timeout90 };
   } catch (err) {
@@ -518,9 +518,10 @@ async function enviarRecordatorioMapasVacios() {
   if (vacios.length === 0) return;
 
   try {
-    await panelMessage.channel.send(
-      `<@&${SCOUT_ROLE_ID}> ⚠️ Estos mapas llevan rato solos causitas: ${vacios.map(m => `**${m}**`).join(", ")}`
-    );
+    await panelMessage.channel.send({
+      content: `<@&${SCOUT_ROLE_ID}> ⚠️ Estos mapas llevan rato solos causitas: ${vacios.map(m => `**${m}**`).join(", ")}`,
+      allowedMentions: { roles: [SCOUT_ROLE_ID] }
+    });
   } catch (err) {
     console.error("Error enviando recordatorio:", err);
   }
