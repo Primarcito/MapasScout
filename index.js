@@ -320,14 +320,29 @@ function respuestaMapas(ciudad, userId) {
     const users = registros[ciudad]?.[mapa] || [];
     const lleno = users.length >= 5;
     const yaAnotado = users.includes(userId);
-    const label = lleno ? `🔴 ${mapa}` : `${mapa} (${users.length}/5)`;
+
+    let label, style, disabled;
+
+    if (yaAnotado) {
+      label = `✓ ${mapa}`;
+      style = ButtonStyle.Primary;
+      disabled = false;
+    } else if (lleno) {
+      label = `🔴 ${mapa}`;
+      style = ButtonStyle.Secondary;
+      disabled = true;
+    } else {
+      label = `${mapa} (${users.length}/5)`;
+      style = ButtonStyle.Success;
+      disabled = false;
+    }
 
     fila.addComponents(
       new ButtonBuilder()
         .setCustomId(`registro_btn_${ciudad}__${mapa}`)
         .setLabel(label)
-        .setStyle(lleno ? ButtonStyle.Secondary : ButtonStyle.Success)
-        .setDisabled(lleno || yaAnotado)
+        .setStyle(style)
+        .setDisabled(disabled)
     );
   });
 
@@ -561,7 +576,31 @@ client.on("interactionCreate", async interaction => {
     if (!registros[ciudad]) registros[ciudad] = {};
     if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
 
-    if (!registros[ciudad][mapa].includes(userId) && registros[ciudad][mapa].length < 5) {
+    if (registros[ciudad][mapa].includes(userId)) {
+      // Ya está anotado → desanotarlo
+      registros[ciudad][mapa] = registros[ciudad][mapa].filter(id => id !== userId);
+
+      // Cerrar scout activo de ese mapa
+      if (scoutsActivos[userId]) {
+        const entry = scoutsActivos[userId].find(e => e.ciudad === ciudad && e.mapa === mapa);
+        if (entry) {
+          const duracionMin = Math.floor((Date.now() - entry.inicio) / 60000);
+          historialScouts.push({ userId, ciudad, mapa, inicio: entry.inicio, fin: Date.now(), duracionMin });
+          scoutsActivos[userId] = scoutsActivos[userId].filter(e => !(e.ciudad === ciudad && e.mapa === mapa));
+          if (scoutsActivos[userId].length === 0) delete scoutsActivos[userId];
+        }
+      }
+
+      guardarDatos();
+      guardarScouts();
+      await actualizarPanel();
+
+      const resp = respuestaMapas(ciudad, userId);
+      resp.content = `❌ Saliste de **${mapa}**\n\n` + resp.content;
+      return interaction.update(resp);
+
+    } else if (registros[ciudad][mapa].length < 5) {
+      // No está anotado y hay lugar → anotarlo
       registros[ciudad][mapa].push(userId);
 
       if (!scoutsActivos[userId]) scoutsActivos[userId] = [];
@@ -570,12 +609,16 @@ client.on("interactionCreate", async interaction => {
       guardarDatos();
       guardarScouts();
       await actualizarPanel();
-    }
 
-    // Actualizar el ephemeral mostrando los mapas actualizados
-    const resp = respuestaMapas(ciudad, userId);
-    resp.content = `✅ Registrado en **${mapa}**\n\n` + resp.content;
-    return interaction.update(resp);
+      const resp = respuestaMapas(ciudad, userId);
+      resp.content = `✅ Registrado en **${mapa}**\n\n` + resp.content;
+      return interaction.update(resp);
+    } else {
+      // Lleno
+      const resp = respuestaMapas(ciudad, userId);
+      resp.content = `⚠️ **${mapa}** está lleno.\n\n` + resp.content;
+      return interaction.update(resp);
+    }
   }
 
   /* ===== BOTÓN: DROPEAR ===== */
