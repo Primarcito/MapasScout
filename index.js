@@ -303,7 +303,7 @@ function respuestaCiudades() {
 
   filas.push(fila);
 
-  return { content: "📍 **Seleccioná una ciudad:**", components: filas };
+  return { content: "📍 **Selecciona una ciudad:**", components: filas };
 }
 
 function respuestaMapas(ciudad, userId) {
@@ -363,7 +363,7 @@ function respuestaMapas(ciudad, userId) {
     )
   );
 
-  return { content: `📍 **${ciudad}** — elegí tu mapa:`, components: filas };
+  return { content: `📍 **${ciudad}** — elige tu mapa:`, components: filas };
 }
 
 /* ================= RESET AUTOMÁTICO ================= */
