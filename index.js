@@ -174,7 +174,7 @@ function generarEmbed() {
       const users = registros[ciudad]?.[mapa] || [];
       const menciones = users.map(id => `<@${id}>`).join(" ");
       const lleno = users.length >= 5;
-      texto += `${lleno ? "🔴 " : ""}**${mapa}** → ${menciones}\n`;
+      texto += `${lleno ? "🔴 " : "• "}**${mapa}** → ${menciones}\n`;
     });
 
     embed.addFields({
