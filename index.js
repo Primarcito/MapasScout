@@ -195,12 +195,16 @@ function componentesPanel() {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("abrir_anotarse")
-        .setLabel("Anotarse")
+        .setLabel("ANOTARSE")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("dropear_mapas")
-        .setLabel("Dropear")
-        .setStyle(ButtonStyle.Danger)
+        .setLabel("DROPEAR")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId("volver_mapas_panel")
+        .setLabel("VOLVER A MIS MAPAS")
+        .setStyle(ButtonStyle.Success)
     )
   ];
 }
@@ -585,25 +589,15 @@ client.on("interactionCreate", async interaction => {
     guardarScouts();
     await actualizarPanel();
 
-    const tieneUltimos = ultimosMapas[userId]?.length > 0;
-
     return interaction.reply({
-      content: "🔴 Dropeaste todos tus mapas." + (tieneUltimos ? "\nPodés volver a anotarte con el botón." : ""),
-      components: tieneUltimos
-        ? [new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId("volver_mapas")
-              .setLabel("↩️ Volver a mis mapas")
-              .setStyle(ButtonStyle.Success)
-          )]
-        : [],
+      content: "🔴 Dropeaste todos tus mapas.\nUsá **VOLVER A MIS MAPAS** en el panel para volver.",
       ephemeral: true
     });
   }
 
   /* ===== BOTÓN: VOLVER A MAPAS ===== */
 
-  if (interaction.isButton() && interaction.customId === "volver_mapas") {
+  if (interaction.isButton() && (interaction.customId === "volver_mapas" || interaction.customId === "volver_mapas_panel")) {
     const userId = interaction.user.id;
     const lista = ultimosMapas[userId];
 
