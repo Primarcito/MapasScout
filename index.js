@@ -591,53 +591,17 @@ client.on("interactionCreate", async interaction => {
 
     // Guardar mapas antes de dropear
     guardarUltimosMapas(userId);
-    const lista = ultimosMapas[userId] ? [...ultimosMapas[userId]] : [];
+    const tieneMaps = ultimosMapas[userId]?.length > 0;
 
     cerrarScoutsActivos(userId);
     borrarRegistrosUsuario(userId);
     guardarDatos();
     guardarScouts();
-
-    // Intentar volver a los mapas automáticamente
-    const anotados = [];
-    const saltados = [];
-
-    for (const { ciudad, mapa } of lista) {
-      if (!mapas[ciudad]?.includes(mapa)) {
-        saltados.push(`${ciudad} - ${mapa} (eliminado)`);
-        continue;
-      }
-      if (!registros[ciudad]) registros[ciudad] = {};
-      if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
-      if (registros[ciudad][mapa].includes(userId)) continue;
-      if (registros[ciudad][mapa].length >= 5) {
-        saltados.push(`${ciudad} - ${mapa} (lleno)`);
-        continue;
-      }
-      registros[ciudad][mapa].push(userId);
-      if (!scoutsActivos[userId]) scoutsActivos[userId] = [];
-      scoutsActivos[userId].push({ ciudad, mapa, inicio: Date.now() });
-      anotados.push(`${ciudad} - ${mapa}`);
-    }
-
-    delete ultimosMapas[userId];
-    guardarDatos();
-    guardarScouts();
     await actualizarPanel();
 
-    let msg = "";
-
-    if (lista.length === 0) {
-      msg = "🔴 Dropeaste todos tus mapas.";
-    } else {
-      msg = "🔄 **Tus mapas fueron reseteados**";
-      if (anotados.length > 0) {
-        msg += `\n\n✅ **Volviste a:**\n${anotados.map(m => `• ${m}`).join("\n")}`;
-      }
-      if (saltados.length > 0) {
-        msg += `\n\n⚠️ **No se pudo:**\n${saltados.map(m => `• ${m}`).join("\n")}`;
-      }
-    }
+    const msg = tieneMaps
+      ? "🔴 Dropeaste todos tus mapas.\nUsá **VOLVER A MIS MAPAS** en el panel para volver."
+      : "🔴 Dropeaste todos tus mapas.";
 
     await interaction.editReply({ content: msg });
     procesando.delete(userId);
