@@ -204,6 +204,12 @@ function generarEmbed() {
     });
   }
 
+  embed.addFields({
+    name: "​",
+    value: "📋 Usa `!revisar` para revisar los mapas por 15 minutos.",
+    inline: false
+  });
+
   return embed;
 }
 
@@ -667,13 +673,7 @@ client.on("interactionCreate", async interaction => {
       panelMessageId = panelMessage.id;
       guardarPanel();
 
-      await panelMessage.channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setDescription("📋 Usa `!revisar` para revisar los mapas por 15 minutos.")
-            .setColor(0x2b2d31)
-        ]
-      });
+
 
       return;
     }
