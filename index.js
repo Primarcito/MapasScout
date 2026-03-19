@@ -476,24 +476,17 @@ function generarEmbedRevision() {
   for (const ciudad in mapas) {
     if (!mapas[ciudad] || mapas[ciudad].length === 0) continue;
 
-    // Solo mostrar mapas que tienen scouts
-    const mapasConScout = mapas[ciudad].filter(mapa => {
-      const users = registros[ciudad]?.[mapa] || [];
-      return users.length > 0;
-    });
-
-    if (mapasConScout.length === 0) continue;
-
     hayMapas = true;
     let texto = "";
 
-    mapasConScout.forEach(mapa => {
+    mapas[ciudad].forEach(mapa => {
       const key = `${ciudad}__${mapa}`;
       const estado = revisionEstado[key];
 
-      if (estado) {
+      if (estado && estado.revisores && estado.revisores.length > 0) {
         const mins = Math.floor((ahora - estado.revisadoEn) / 60000);
-        texto += `- ✅ **${mapa}** — revisado hace ${mins}min
+        const menciones = estado.revisores.map(id => `<@${id}>`).join(" ");
+        texto += `- ✅ **${mapa}** — ${menciones} hace ${mins}min
 `;
       } else {
         texto += `- ⚪ **${mapa}** — sin revisar
@@ -510,8 +503,8 @@ function generarEmbedRevision() {
 
   if (!hayMapas) {
     embed.addFields({
-      name: "Sin mapas activos",
-      value: "No hay scouts anotados en ningún mapa.",
+      name: "Sin mapas configurados",
+      value: "Un admin debe usar `/editar_mapas` para agregar mapas.",
       inline: false
     });
   }
@@ -528,16 +521,13 @@ function componentesRevision() {
     if (!mapas[ciudad] || mapas[ciudad].length === 0) continue;
 
     mapas[ciudad].forEach(mapa => {
-      const users = registros[ciudad]?.[mapa] || [];
-      if (users.length === 0) return;
-
       if (count % 5 === 0 && count !== 0) {
         filas.push(fila);
         fila = new ActionRowBuilder();
       }
 
       const key = `${ciudad}__${mapa}`;
-      const revisado = !!revisionEstado[key];
+      const revisado = revisionEstado[key]?.revisores?.length > 0;
 
       fila.addComponents(
         new ButtonBuilder()
@@ -971,13 +961,15 @@ client.on("interactionCreate", async interaction => {
     const userId = interaction.user.id;
     const ahora = Date.now();
 
-    // Verificar que el usuario esté anotado en ese mapa
     const [ciudad, mapa] = key.split("__");
-    const users = registros[ciudad]?.[mapa] || [];
 
-    if (!users.includes(userId)) {
+    // Verificar rol Scout
+    const tieneRol = interaction.member?.roles.cache.some(
+      role => role.id === "1422971680480956547"
+    );
+    if (!tieneRol) {
       return interaction.reply({
-        content: "Solo puedes marcar los mapas donde estás anotado.",
+        content: "Necesitas el rol Scout para marcar mapas.",
         ephemeral: true
       });
     }
@@ -987,13 +979,25 @@ client.on("interactionCreate", async interaction => {
       clearTimeout(revisionEstado[key].timeout);
     }
 
+    // Obtener revisores actuales (max 2, orden de llegada)
+    let revisores = revisionEstado[key]?.revisores || [];
+
+    if (!revisores.includes(userId)) {
+      if (revisores.length >= 2) {
+        // Sacar al primero, meter al nuevo
+        revisores = [revisores[1], userId];
+      } else {
+        revisores = [...revisores, userId];
+      }
+    }
+
     // Marcar como revisado
     const timeout = setTimeout(async () => {
       delete revisionEstado[key];
       await actualizarRevision();
     }, 5 * 60 * 1000);
 
-    revisionEstado[key] = { revisadoEn: ahora, timeout };
+    revisionEstado[key] = { revisadoEn: ahora, revisores, timeout };
 
     await actualizarRevision();
 
