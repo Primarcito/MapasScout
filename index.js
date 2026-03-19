@@ -132,7 +132,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("top_scouts")
-    .setDescription("Ranking Scouts")
+    .setDescription("Ranking Scouts"),
+
+  new SlashCommandBuilder()
+    .setName("panel_revision")
+    .setDescription("Crear el panel de revisión de mapas")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -444,6 +448,121 @@ async function ejecutarReset() {
   console.log("Reset diario completado.");
 }
 
+/* ================= PANEL REVISIÓN ================= */
+
+let revisionMessage = null;
+// revisionEstado[ciudad__mapa] = { revisadoEn: timestamp, timeout: timeoutId } | null
+const revisionEstado = {};
+
+function generarEmbedRevision() {
+  const iconos = {
+    "Lymhurst": "🌲", "Bridgewatch": "🏜️", "Fort Sterling": "❄️",
+    "Thetford": "🌿", "Martlock": "⛰️", "Zona Roja": "🔥"
+  };
+
+  const embed = new EmbedBuilder()
+    .setTitle("🔍 Revisión de Mapas")
+    .setDescription("Marca tu mapa cada 5 minutos")
+    .setColor(0xe91e63)
+    .setFooter({ text: `Actualizado • ${new Date().toLocaleString('es-AR', { timeZone: 'UTC' })} UTC` });
+
+  const ahora = Date.now();
+  let hayMapas = false;
+
+  for (const ciudad in mapas) {
+    if (!mapas[ciudad] || mapas[ciudad].length === 0) continue;
+
+    // Solo mostrar mapas que tienen scouts
+    const mapasConScout = mapas[ciudad].filter(mapa => {
+      const users = registros[ciudad]?.[mapa] || [];
+      return users.length > 0;
+    });
+
+    if (mapasConScout.length === 0) continue;
+
+    hayMapas = true;
+    let texto = "";
+
+    mapasConScout.forEach(mapa => {
+      const key = `${ciudad}__${mapa}`;
+      const estado = revisionEstado[key];
+
+      if (estado) {
+        const mins = Math.floor((ahora - estado.revisadoEn) / 60000);
+        texto += `- ✅ **${mapa}** — revisado hace ${mins}min
+`;
+      } else {
+        texto += `- ⚪ **${mapa}** — sin revisar
+`;
+      }
+    });
+
+    embed.addFields({
+      name: `${iconos[ciudad] || "📍"} ${ciudad}`,
+      value: texto,
+      inline: false
+    });
+  }
+
+  if (!hayMapas) {
+    embed.addFields({
+      name: "Sin mapas activos",
+      value: "No hay scouts anotados en ningún mapa.",
+      inline: false
+    });
+  }
+
+  return embed;
+}
+
+function componentesRevision() {
+  const filas = [];
+  let fila = new ActionRowBuilder();
+  let count = 0;
+
+  for (const ciudad in mapas) {
+    if (!mapas[ciudad] || mapas[ciudad].length === 0) continue;
+
+    mapas[ciudad].forEach(mapa => {
+      const users = registros[ciudad]?.[mapa] || [];
+      if (users.length === 0) return;
+
+      if (count % 5 === 0 && count !== 0) {
+        filas.push(fila);
+        fila = new ActionRowBuilder();
+      }
+
+      const key = `${ciudad}__${mapa}`;
+      const revisado = !!revisionEstado[key];
+
+      fila.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`revision_btn_${key}`)
+          .setLabel(revisado ? `✅ ${mapa}` : mapa)
+          .setStyle(revisado ? ButtonStyle.Success : ButtonStyle.Secondary)
+      );
+
+      count++;
+    });
+  }
+
+  if (count > 0) filas.push(fila);
+  return filas;
+}
+
+async function actualizarRevision() {
+  if (!revisionMessage) return;
+  try {
+    await revisionMessage.edit({
+      embeds: [generarEmbedRevision()],
+      components: componentesRevision()
+    });
+  } catch (err) {
+    console.error("Error actualizando panel revisión:", err);
+    revisionMessage = null;
+  }
+}
+
 /* ================= ALERTAS MAPAS ================= */
 
 async function verificarMapaVacio(ciudad, mapa) {
@@ -506,6 +625,10 @@ async function limpiarAlertaMapa(key) {
 
 async function enviarRecordatorioMapasVacios() {
   if (!panelMessage) return;
+
+  // No mandar entre 6:00 y 10:00 UTC
+  const horaUTC = new Date().getUTCHours();
+  if (horaUTC >= 6 && horaUTC < 10) return;
 
   const vacios = [];
   for (const ciudad in mapas) {
@@ -604,6 +727,36 @@ client.on("interactionCreate", async interaction => {
         components: [new ActionRowBuilder().addComponents(select)],
         ephemeral: true
       });
+    }
+
+    if (interaction.commandName === "panel_revision") {
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.name.toLowerCase() === "scout"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({
+          content: "Necesitas el rol Scout para usar este comando.",
+          ephemeral: true
+        });
+      }
+
+      const comps = componentesRevision();
+
+      if (comps.length === 0) {
+        return interaction.reply({
+          content: "No hay scouts anotados en ningún mapa.",
+          ephemeral: true
+        });
+      }
+
+      revisionMessage = await interaction.reply({
+        embeds: [generarEmbedRevision()],
+        components: comps,
+        fetchReply: true
+      });
+
+      return;
     }
 
     if (interaction.commandName === "top_scouts") {
@@ -805,6 +958,45 @@ client.on("interactionCreate", async interaction => {
     if (!respuesta) respuesta = "No se pudo volver a ningún mapa.";
 
     return interaction.reply({ content: respuesta, ephemeral: true });
+  }
+
+  /* ===== BOTÓN: REVISIÓN MAPA ===== */
+
+  if (interaction.isButton() && interaction.customId.startsWith("revision_btn_")) {
+    const key = interaction.customId.replace("revision_btn_", "");
+    const userId = interaction.user.id;
+    const ahora = Date.now();
+
+    // Verificar que el usuario esté anotado en ese mapa
+    const [ciudad, mapa] = key.split("__");
+    const users = registros[ciudad]?.[mapa] || [];
+
+    if (!users.includes(userId)) {
+      return interaction.reply({
+        content: "Solo puedes marcar los mapas donde estás anotado.",
+        ephemeral: true
+      });
+    }
+
+    // Limpiar timeout anterior si existe
+    if (revisionEstado[key]?.timeout) {
+      clearTimeout(revisionEstado[key].timeout);
+    }
+
+    // Marcar como revisado
+    const timeout = setTimeout(async () => {
+      delete revisionEstado[key];
+      await actualizarRevision();
+    }, 5 * 60 * 1000);
+
+    revisionEstado[key] = { revisadoEn: ahora, timeout };
+
+    await actualizarRevision();
+
+    return interaction.reply({
+      content: `✅ **${mapa}** marcado como revisado.`,
+      ephemeral: true
+    });
   }
 
   /* ===== SELECT: EDITAR CIUDAD ===== */
