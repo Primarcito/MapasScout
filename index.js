@@ -140,7 +140,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("panel_revision")
-    .setDescription("Crear el panel de revisión de mapas")
+    .setDescription("Crear el panel de revisión de mapas"),
+
+  new SlashCommandBuilder()
+    .setName("reset_revision")
+    .setDescription("Limpiar el panel de revisión (solo prio1)")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -719,6 +723,36 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply({
         content: "Selecciona el scout a remover:",
         components: [new ActionRowBuilder().addComponents(select)],
+        ephemeral: true
+      });
+    }
+
+    if (interaction.commandName === "reset_revision") {
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.name.toLowerCase() === "prio1"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({
+          content: "Necesitas el rol prio1 para usar este comando.",
+          ephemeral: true
+        });
+      }
+
+      // Limpiar todos los estados de revisión
+      for (const key in revisionEstado) {
+        if (revisionEstado[key]?.timeout) clearTimeout(revisionEstado[key].timeout);
+        delete revisionEstado[key];
+      }
+
+      // Intentar borrar el mensaje del panel de revisión
+      if (revisionMessage) {
+        try { await revisionMessage.delete(); } catch (e) {}
+        revisionMessage = null;
+      }
+
+      return interaction.reply({
+        content: "✅ Panel de revisión limpiado.",
         ephemeral: true
       });
     }
