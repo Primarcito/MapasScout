@@ -22,7 +22,11 @@ const CLIENT_ID = process.env.CLIENT_ID || "1473617798600200342";
 const GUILD_ID = process.env.GUILD_ID || "969420681349574677";
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 const procesando = new Set();
@@ -161,9 +165,9 @@ function generarEmbed() {
     "Lymhurst": "🌲",
     "Bridgewatch": "🏜️",
     "Fort Sterling": "❄️",
-    "Thetford": "🌿",
+    "Thetford": "🌾",
     "Martlock": "⛰️",
-    "Zona Roja": "🔥"
+    "Zona Roja": "🔴"
   };
 
   let hayMapas = false;
@@ -457,7 +461,7 @@ const revisionEstado = {};
 function generarEmbedRevision() {
   const iconos = {
     "Lymhurst": "🌲", "Bridgewatch": "🏜️", "Fort Sterling": "❄️",
-    "Thetford": "🌿", "Martlock": "⛰️", "Zona Roja": "🔥"
+    "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴"
   };
 
   const embed = new EmbedBuilder()
@@ -1063,6 +1067,32 @@ client.on("interactionCreate", async interaction => {
 });
 
 /* ================= READY ================= */
+
+client.on("messageCreate", async message => {
+  if (message.author.bot) return;
+  if (message.content.toLowerCase() !== "!revisar") return;
+
+  const tieneRol = message.member?.roles.cache.some(
+    role => role.name.toLowerCase() === "scout"
+  );
+
+  if (!tieneRol) {
+    return message.reply("Necesitas el rol Scout para usar este comando.");
+  }
+
+  const comps = componentesRevision();
+
+  if (comps.length === 0) {
+    return message.reply("No hay scouts anotados en ningún mapa.");
+  }
+
+  revisionMessage = await message.channel.send({
+    embeds: [generarEmbedRevision()],
+    components: comps
+  });
+
+  try { await message.delete(); } catch (e) {}
+});
 
 client.once("clientReady", async () => {
   console.log(`Bot listo: ${client.user.tag}`);
