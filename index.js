@@ -139,7 +139,7 @@ const commands = [
     .setDescription("Ranking Scouts"),
 
   new SlashCommandBuilder()
-    .setName("panel_revision")
+    .setName("revisar")
     .setDescription("Crear el panel de revisión de mapas"),
 
   new SlashCommandBuilder()
@@ -757,7 +757,7 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
-    if (interaction.commandName === "panel_revision") {
+    if (interaction.commandName === "revisar") {
       const tieneRol = interaction.member.roles.cache.some(
         role => role.name.toLowerCase() === "scout"
       );
