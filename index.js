@@ -666,6 +666,11 @@ client.on("interactionCreate", async interaction => {
       panelChannelId = panelMessage.channel.id;
       panelMessageId = panelMessage.id;
       guardarPanel();
+
+      await panelMessage.channel.send(
+        "📋 Usa `!revisar` para revisar los mapas por 15 minutos."
+      );
+
       return;
     }
 
