@@ -1017,11 +1017,6 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
-    // Limpiar timeout anterior si existe
-    if (revisionEstado[key]?.timeout) {
-      clearTimeout(revisionEstado[key].timeout);
-    }
-
     // Obtener revisores actuales (max 2, orden de llegada)
     let revisores = revisionEstado[key]?.revisores || [];
 
@@ -1034,13 +1029,8 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    // Marcar como revisado
-    const timeout = setTimeout(async () => {
-      delete revisionEstado[key];
-      await actualizarRevision();
-    }, 5 * 60 * 1000);
-
-    revisionEstado[key] = { revisadoEn: ahora, revisores, timeout };
+    // Guardar sin timeout — queda hasta reset manual
+    revisionEstado[key] = { revisadoEn: ahora, revisores };
 
     await actualizarRevision();
 
@@ -1160,6 +1150,13 @@ client.once("clientReady", async () => {
   }
 
   programarReset();
+
+  // Auto-actualizar panel de revisión cada minuto
+  setInterval(async () => {
+    if (revisionMessage && Object.keys(revisionEstado).length > 0) {
+      await actualizarRevision();
+    }
+  }, 60 * 1000);
 });
 
 client.login(TOKEN);
