@@ -1040,13 +1040,10 @@ client.on("interactionCreate", async interaction => {
     // Guardar sin timeout — queda hasta reset manual
     revisionEstado[key] = { revisadoEn: ahora, revisores };
 
-    await actualizarRevision();
+    // Responder primero antes de actualizar el panel
+    await interaction.editReply({ content: `✅ **${mapa}** marcado como revisado.` });
 
-    try {
-      await interaction.editReply({ content: `✅ **${mapa}** marcado como revisado.` });
-    } catch {
-      await interaction.reply({ content: `✅ **${mapa}** marcado como revisado.`, flags: MessageFlags.Ephemeral });
-    }
+    await actualizarRevision();
   }
 
   /* ===== SELECT: EDITAR CIUDAD ===== */
@@ -1107,7 +1104,10 @@ client.on("interactionCreate", async interaction => {
     guardarScouts();
     await actualizarPanel();
 
-    return interaction.reply({ content: `✅ Mapas de **${ciudad}** actualizados.`, flags: MessageFlags.Ephemeral });
+    const confirmMsg = await interaction.reply({ content: `✅ Mapas de **${ciudad}** actualizados.`, flags: MessageFlags.Ephemeral, withResponse: true });
+    setTimeout(async () => {
+      try { await confirmMsg.resource.message.delete(); } catch (e) {}
+    }, 45000);
   }
 
 });
