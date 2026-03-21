@@ -494,9 +494,12 @@ function generarEmbedRevision() {
       const estado = revisionEstado[key];
 
       if (estado && estado.revisores && estado.revisores.length > 0) {
-        const mins = Math.floor((ahora - estado.revisadoEn) / 60000);
+        const totalMins = Math.floor((ahora - estado.revisadoEn) / 60000);
+        const horas = Math.floor(totalMins / 60);
+        const mins = totalMins % 60;
+        const tiempo = horas > 0 ? `${horas}h ${mins}min` : `${mins}min`;
         const menciones = estado.revisores.map(id => `<@${id}>`).join(" ");
-        texto += `- ✅ **${mapa}** — ${menciones} hace ${mins}min
+        texto += `- ✅ **${mapa}** — ${menciones} hace ${tiempo}
 `;
       } else {
         texto += `- ⚪ **${mapa}** — sin revisar
@@ -537,13 +540,16 @@ function componentesRevision() {
       }
 
       const key = `${ciudad}__${mapa}`;
-      const revisado = revisionEstado[key]?.revisores?.length > 0;
+      const estado = revisionEstado[key];
+      const revisado = estado?.revisores?.length > 0;
+      const mins = revisado ? Math.floor((Date.now() - estado.revisadoEn) / 60000) : 0;
+      const expirado = revisado && mins >= 15;
 
       fila.addComponents(
         new ButtonBuilder()
           .setCustomId(`revision_btn_${key}`)
-          .setLabel(revisado ? `✅ ${mapa}` : mapa)
-          .setStyle(revisado ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setLabel(revisado && !expirado ? `✅ ${mapa}` : mapa)
+          .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
       );
 
       count++;
@@ -1004,6 +1010,8 @@ client.on("interactionCreate", async interaction => {
     const userId = interaction.user.id;
     const ahora = Date.now();
 
+    await interaction.deferReply({ ephemeral: true });
+
     const [ciudad, mapa] = key.split("__");
 
     // Verificar rol Scout
@@ -1011,10 +1019,7 @@ client.on("interactionCreate", async interaction => {
       role => role.id === "1422971680480956547"
     );
     if (!tieneRol) {
-      return interaction.reply({
-        content: "Necesitas el rol Scout para marcar mapas.",
-        ephemeral: true
-      });
+      return interaction.editReply({ content: "Necesitas el rol Scout para marcar mapas." });
     }
 
     // Obtener revisores actuales (max 2, orden de llegada)
@@ -1034,10 +1039,11 @@ client.on("interactionCreate", async interaction => {
 
     await actualizarRevision();
 
-    return interaction.reply({
-      content: `✅ **${mapa}** marcado como revisado.`,
-      ephemeral: true
-    });
+    try {
+      await interaction.editReply({ content: `✅ **${mapa}** marcado como revisado.` });
+    } catch {
+      await interaction.reply({ content: `✅ **${mapa}** marcado como revisado.`, ephemeral: true });
+    }
   }
 
   /* ===== SELECT: EDITAR CIUDAD ===== */
