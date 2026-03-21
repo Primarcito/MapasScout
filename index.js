@@ -14,7 +14,8 @@ const {
   Routes,
   EmbedBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  MessageFlags
 } = require('discord.js');
 
 const TOKEN = process.env.TOKEN;
@@ -669,11 +670,12 @@ client.on("interactionCreate", async interaction => {
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === "panel_mapas") {
-      panelMessage = await interaction.reply({
+      const panelReply = await interaction.reply({
         embeds: [generarEmbed()],
         components: componentesPanel(),
-        fetchReply: true
+        withResponse: true
       });
+      panelMessage = panelReply.resource.message;
 
       panelChannelId = panelMessage.channel.id;
       panelMessageId = panelMessage.id;
@@ -690,7 +692,7 @@ client.on("interactionCreate", async interaction => {
       );
 
       if (!tieneRol) {
-        return interaction.reply({ content: "Necesitas el rol prio1 para usar este comando.", ephemeral: true });
+        return interaction.reply({ content: "Necesitas el rol prio1 para usar este comando.", flags: MessageFlags.Ephemeral });
       }
 
       const select = new StringSelectMenuBuilder()
@@ -701,7 +703,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply({
         content: "Selecciona ciudad a editar:",
         components: [new ActionRowBuilder().addComponents(select)],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -711,7 +713,7 @@ client.on("interactionCreate", async interaction => {
       );
 
       if (!tieneRol) {
-        return interaction.reply({ content: "Necesitas el rol prio1 para usar este comando.", ephemeral: true });
+        return interaction.reply({ content: "Necesitas el rol prio1 para usar este comando.", flags: MessageFlags.Ephemeral });
       }
 
       const scouts = new Set();
@@ -722,7 +724,7 @@ client.on("interactionCreate", async interaction => {
       }
 
       if (scouts.size === 0) {
-        return interaction.reply({ content: "No hay scouts registrados.", ephemeral: true });
+        return interaction.reply({ content: "No hay scouts registrados.", flags: MessageFlags.Ephemeral });
       }
 
       const opciones = Array.from(scouts).slice(0, 25).map(id => ({
@@ -738,7 +740,7 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply({
         content: "Selecciona el scout a remover:",
         components: [new ActionRowBuilder().addComponents(select)],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -750,7 +752,7 @@ client.on("interactionCreate", async interaction => {
       if (!tieneRol) {
         return interaction.reply({
           content: "Necesitas el rol prio1 para usar este comando.",
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
 
@@ -768,7 +770,7 @@ client.on("interactionCreate", async interaction => {
 
       return interaction.reply({
         content: "✅ Panel de revisión limpiado.",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -780,7 +782,7 @@ client.on("interactionCreate", async interaction => {
       if (!tieneRol) {
         return interaction.reply({
           content: "Necesitas el rol Scout para usar este comando.",
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
 
@@ -789,22 +791,23 @@ client.on("interactionCreate", async interaction => {
       if (comps.length === 0) {
         return interaction.reply({
           content: "No hay scouts anotados en ningún mapa.",
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
 
-      revisionMessage = await interaction.reply({
+      const revisionReply = await interaction.reply({
         embeds: [generarEmbedRevision()],
         components: comps,
-        fetchReply: true
+        withResponse: true
       });
+      revisionMessage = revisionReply.resource.message;
 
       return;
     }
 
     if (interaction.commandName === "top_scouts") {
       if (historialScouts.length === 0) {
-        return interaction.reply({ content: "Aún no hay scouts registrados.", ephemeral: true });
+        return interaction.reply({ content: "Aún no hay scouts registrados.", flags: MessageFlags.Ephemeral });
       }
 
       const ranking = {};
@@ -836,7 +839,7 @@ client.on("interactionCreate", async interaction => {
   /* ===== BOTÓN: ABRIR ANOTARSE ===== */
 
   if (interaction.isButton() && interaction.customId === "abrir_anotarse") {
-    return interaction.reply({ ...respuestaCiudades(), ephemeral: true });
+    return interaction.reply({ ...respuestaCiudades(), flags: MessageFlags.Ephemeral });
   }
 
   /* ===== BOTÓN: SELECCIONAR CIUDAD ===== */
@@ -916,10 +919,10 @@ client.on("interactionCreate", async interaction => {
     const userId = interaction.user.id;
 
     if (procesando.has(userId)) {
-      return interaction.reply({ content: "⏳ Espera un momento...", ephemeral: true });
+      return interaction.reply({ content: "⏳ Espera un momento...", flags: MessageFlags.Ephemeral });
     }
     procesando.add(userId);
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Guardar mapas antes de dropear
     guardarUltimosMapas(userId);
@@ -959,7 +962,7 @@ client.on("interactionCreate", async interaction => {
     const lista = ultimosMapas[userId];
 
     if (!lista || lista.length === 0) {
-      return interaction.reply({ content: "No tienes nada guardado pe.", ephemeral: true });
+      return interaction.reply({ content: "No tienes nada guardado pe.", flags: MessageFlags.Ephemeral });
     }
 
     const anotados = [];
@@ -1000,7 +1003,7 @@ client.on("interactionCreate", async interaction => {
     if (saltados.length > 0) respuesta += `\n⚠️ No se pudo:\n${saltados.map(m => `• ${m}`).join("\n")}`;
     if (!respuesta) respuesta = "No se pudo volver a ningún mapa.";
 
-    return interaction.reply({ content: respuesta, ephemeral: true });
+    return interaction.reply({ content: respuesta, flags: MessageFlags.Ephemeral });
   }
 
   /* ===== BOTÓN: REVISIÓN MAPA ===== */
@@ -1010,7 +1013,7 @@ client.on("interactionCreate", async interaction => {
     const userId = interaction.user.id;
     const ahora = Date.now();
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const [ciudad, mapa] = key.split("__");
 
@@ -1042,7 +1045,7 @@ client.on("interactionCreate", async interaction => {
     try {
       await interaction.editReply({ content: `✅ **${mapa}** marcado como revisado.` });
     } catch {
-      await interaction.reply({ content: `✅ **${mapa}** marcado como revisado.`, ephemeral: true });
+      await interaction.reply({ content: `✅ **${mapa}** marcado como revisado.`, flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -1104,7 +1107,7 @@ client.on("interactionCreate", async interaction => {
     guardarScouts();
     await actualizarPanel();
 
-    return interaction.reply({ content: `✅ Mapas de **${ciudad}** actualizados.`, ephemeral: true });
+    return interaction.reply({ content: `✅ Mapas de **${ciudad}** actualizados.`, flags: MessageFlags.Ephemeral });
   }
 
 });
