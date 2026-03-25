@@ -692,7 +692,7 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "editar_mapas") {
       const tieneRol = interaction.member.roles.cache.some(
-        role => role.name.toLowerCase() === "prio1"
+        role => role.id === "1476467289418367158" || role.name.toLowerCase() === "prio1"
       );
 
       if (!tieneRol) {
