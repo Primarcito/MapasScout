@@ -145,7 +145,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("reset_revision")
-    .setDescription("Limpiar el panel de revisión (solo prio1)")
+    .setDescription("Limpiar el panel de revisión (solo prio1)"),
+
+  new SlashCommandBuilder()
+    .setName("reset_mapas")
+    .setDescription("Resetear el panel de mapas (solo prio1)")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -740,6 +744,40 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply({
         content: "Selecciona el scout a remover:",
         components: [new ActionRowBuilder().addComponents(select)],
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    if (interaction.commandName === "reset_mapas") {
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.name.toLowerCase() === "prio1"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({
+          content: "Necesitas el rol prio1 para usar este comando.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      // Cerrar todos los scouts activos
+      for (const userId in scoutsActivos) {
+        cerrarScoutsActivos(userId);
+      }
+
+      // Limpiar mapas y registros
+      for (const ciudad in mapas) mapas[ciudad] = [];
+      for (const ciudad in registros) registros[ciudad] = {};
+
+      ultimosMapas = {};
+      ultimaEdicion = null;
+
+      guardarDatos();
+      guardarScouts();
+      await actualizarPanel();
+
+      return interaction.reply({
+        content: "✅ Panel de mapas reseteado.",
         flags: MessageFlags.Ephemeral
       });
     }
