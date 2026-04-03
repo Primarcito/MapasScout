@@ -32,6 +32,9 @@ const client = new Client({
 
 const procesando = new Set();
 
+// Historial del día actual (se limpia a las 10 UTC)
+let historialDia = [];
+
 const SCOUT_ROLE_ID = "1422971680480956547";
 
 // alertasMapas[ciudad__mapa] = { messageId, timeout20min, timeout90min }
@@ -91,13 +94,14 @@ function cargarScouts() {
     scoutsActivos = data.activos || {};
     historialScouts = data.historial || [];
     ultimosMapas = data.ultimosMapas || {};
+    historialDia = data.historialDia || [];
   }
 }
 
 function guardarScouts() {
   fs.writeFileSync(
     SCOUT_FILE,
-    JSON.stringify({ activos: scoutsActivos, historial: historialScouts, ultimosMapas }, null, 2)
+    JSON.stringify({ activos: scoutsActivos, historial: historialScouts, ultimosMapas, historialDia }, null, 2)
   );
 }
 
@@ -136,8 +140,8 @@ const commands = [
     .setDescription("Remover un scout registrado (solo prio1)"),
 
   new SlashCommandBuilder()
-    .setName("top_scouts")
-    .setDescription("Ranking Scouts"),
+    .setName("historial")
+    .setDescription("Ver historial de scouts del día"),
 
   new SlashCommandBuilder()
     .setName("revisar")
@@ -269,21 +273,24 @@ function guardarUltimosMapas(userId) {
   if (lista.length > 0) ultimosMapas[userId] = lista;
 }
 
-function cerrarScoutsActivos(userId) {
+function cerrarScoutsActivos(userId, username = null) {
   const entradas = scoutsActivos[userId];
   if (!entradas || entradas.length === 0) return;
 
   const fin = Date.now();
   entradas.forEach(entry => {
     const duracionMin = Math.floor((fin - entry.inicio) / 60000);
-    historialScouts.push({
+    const registro = {
       userId,
+      username: username || entry.username || userId,
       ciudad: entry.ciudad,
       mapa: entry.mapa,
       inicio: entry.inicio,
       fin,
       duracionMin
-    });
+    };
+    historialScouts.push(registro);
+    historialDia.push(registro);
   });
 
   delete scoutsActivos[userId];
@@ -449,6 +456,7 @@ async function ejecutarReset() {
 
   ultimosMapas = {};
   ultimaEdicion = null;
+  historialDia = [];
 
   guardarDatos();
   guardarScouts();
@@ -692,7 +700,7 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "editar_mapas") {
       const tieneRol = interaction.member.roles.cache.some(
-        role => role.id === "1476467289418367158" || role.name.toLowerCase() === "prio1"
+        role => role.name.toLowerCase() === "prio1"
       );
 
       if (!tieneRol) {
@@ -843,32 +851,23 @@ client.on("interactionCreate", async interaction => {
       return;
     }
 
-    if (interaction.commandName === "top_scouts") {
-      if (historialScouts.length === 0) {
-        return interaction.reply({ content: "Aún no hay scouts registrados.", flags: MessageFlags.Ephemeral });
+    if (interaction.commandName === "historial") {
+      if (historialDia.length === 0) {
+        return interaction.reply({ content: "No hay actividad registrada hoy.", flags: MessageFlags.Ephemeral });
       }
 
-      const ranking = {};
-      historialScouts.forEach(s => {
-        if (!ranking[s.userId]) ranking[s.userId] = 0;
-        ranking[s.userId] += s.duracionMin;
-      });
-
-      const top = Object.entries(ranking).sort((a, b) => b[1] - a[1]).slice(0, 10);
       let texto = "";
-
-      top.forEach(([userId, minutos], i) => {
-        const horas = Math.floor(minutos / 60);
-        const mins = minutos % 60;
-        const tiempo = horas > 0 ? `${horas}h ${mins}m` : `${mins}m`;
-        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
-        texto += `${medal} <@${userId}> — ${tiempo}\n`;
+      historialDia.slice(-20).forEach(s => {
+        const entrada = new Date(s.inicio).toLocaleTimeString('es-PE', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+        const salida = s.fin ? new Date(s.fin).toLocaleTimeString('es-PE', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' }) : "activo";
+        texto += `• **${s.username || s.userId}** — ${s.mapa} — ${entrada} → ${salida} UTC\n`;
       });
 
       const embed = new EmbedBuilder()
-        .setTitle("🏆 Ranking Scouts")
-        .setColor(0xFFD700)
-        .setDescription(texto);
+        .setTitle("📋 Historial del Día")
+        .setColor(0xe91e63)
+        .setDescription(texto)
+        .setFooter({ text: `Se reinicia a las 10:00 UTC` });
 
       return interaction.reply({ embeds: [embed] });
     }
@@ -901,6 +900,8 @@ client.on("interactionCreate", async interaction => {
     const mapa = partes[1];
     const userId = interaction.user.id;
 
+    await interaction.deferUpdate();
+
     if (!registros[ciudad]) registros[ciudad] = {};
     if (!registros[ciudad][mapa]) registros[ciudad][mapa] = [];
 
@@ -913,7 +914,9 @@ client.on("interactionCreate", async interaction => {
         const entry = scoutsActivos[userId].find(e => e.ciudad === ciudad && e.mapa === mapa);
         if (entry) {
           const duracionMin = Math.floor((Date.now() - entry.inicio) / 60000);
-          historialScouts.push({ userId, ciudad, mapa, inicio: entry.inicio, fin: Date.now(), duracionMin });
+          const reg = { userId, username: interaction.user.username, ciudad, mapa, inicio: entry.inicio, fin: Date.now(), duracionMin };
+          historialScouts.push(reg);
+          historialDia.push(reg);
           scoutsActivos[userId] = scoutsActivos[userId].filter(e => !(e.ciudad === ciudad && e.mapa === mapa));
           if (scoutsActivos[userId].length === 0) delete scoutsActivos[userId];
         }
@@ -933,7 +936,7 @@ client.on("interactionCreate", async interaction => {
       registros[ciudad][mapa].push(userId);
 
       if (!scoutsActivos[userId]) scoutsActivos[userId] = [];
-      scoutsActivos[userId].push({ ciudad, mapa, inicio: Date.now() });
+      scoutsActivos[userId].push({ ciudad, mapa, inicio: Date.now(), username: interaction.user.username });
 
       guardarDatos();
       guardarScouts();
@@ -1151,6 +1154,16 @@ client.on("interactionCreate", async interaction => {
 });
 
 /* ================= READY ================= */
+
+// Handler global para evitar crashes por interacciones expiradas
+process.on("unhandledRejection", (err) => {
+  if (err?.code === 10062) return; // Unknown interaction - ignorar
+  console.error("Unhandled rejection:", err);
+});
+
+client.on("error", (err) => {
+  console.error("Client error:", err);
+});
 
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
