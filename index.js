@@ -153,7 +153,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("reset_mapas")
-    .setDescription("Resetear el panel de mapas (solo prio1)")
+    .setDescription("Resetear el panel de mapas (solo prio1)"),
+
+  new SlashCommandBuilder()
+    .setName("exportar")
+    .setDescription("Exportar historial del día como CSV (solo líderes)")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -849,6 +853,43 @@ client.on("interactionCreate", async interaction => {
       revisionMessage = revisionReply.resource.message;
 
       return;
+    }
+
+    if (interaction.commandName === "exportar") {
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.id === "983987481961717782"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({
+          content: "Necesitas el rol Líder para usar este comando.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      if (historialDia.length === 0) {
+        return interaction.reply({
+          content: "No hay actividad registrada hoy.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      // Generar CSV
+      const fecha = new Date().toISOString().split("T")[0];
+      let csv = "Usuario,Mapa,Ciudad,Entrada UTC,Salida UTC,Duracion (min)\n";
+      historialDia.forEach(s => {
+        const entrada = new Date(s.inicio).toISOString().replace("T", " ").slice(0, 19);
+        const salida = s.fin ? new Date(s.fin).toISOString().replace("T", " ").slice(0, 19) : "activo";
+        csv += `${s.username || s.userId},${s.mapa},${s.ciudad},${entrada},${salida},${s.duracionMin}\n`;
+      });
+
+      const buffer = Buffer.from(csv, "utf-8");
+
+      return interaction.reply({
+        content: `📊 Historial del día ${fecha}`,
+        files: [{ attachment: buffer, name: `historial_${fecha}.csv` }],
+        flags: MessageFlags.Ephemeral
+      });
     }
 
     if (interaction.commandName === "historial") {
