@@ -893,22 +893,73 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (interaction.commandName === "historial") {
-      if (historialDia.length === 0) {
+      // Combinar historialDia con sesiones activas
+      const todasSesiones = [...historialDia];
+
+      for (const userId in scoutsActivos) {
+        const entradas = scoutsActivos[userId];
+        entradas.forEach(entry => {
+          todasSesiones.push({
+            userId,
+            username: entry.username || userId,
+            ciudad: entry.ciudad,
+            mapa: entry.mapa,
+            inicio: entry.inicio,
+            fin: null,
+            duracionMin: Math.floor((Date.now() - entry.inicio) / 60000)
+          });
+        });
+      }
+
+      if (todasSesiones.length === 0) {
         return interaction.reply({ content: "No hay actividad registrada hoy.", flags: MessageFlags.Ephemeral });
       }
 
+      // Agrupar por usuario
+      const porUsuario = {};
+      todasSesiones.forEach(s => {
+        const key = s.userId;
+        if (!porUsuario[key]) {
+          porUsuario[key] = {
+            username: s.username || s.userId,
+            mapas: 0,
+            totalMin: 0,
+            ultimaSalida: null,
+            activo: false
+          };
+        }
+        porUsuario[key].mapas++;
+        porUsuario[key].totalMin += s.duracionMin || 0;
+        if (!s.fin) {
+          porUsuario[key].activo = true;
+        } else {
+          if (!porUsuario[key].ultimaSalida || s.fin > porUsuario[key].ultimaSalida) {
+            porUsuario[key].ultimaSalida = s.fin;
+          }
+        }
+      });
+
+      // Ordenar por tiempo total
+      const sorted = Object.values(porUsuario).sort((a, b) => b.totalMin - a.totalMin);
+
       let texto = "";
-      historialDia.slice(-20).forEach(s => {
-        const entrada = new Date(s.inicio).toLocaleTimeString('es-PE', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
-        const salida = s.fin ? new Date(s.fin).toLocaleTimeString('es-PE', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' }) : "activo";
-        texto += `• **${s.username || s.userId}** — ${s.mapa} — ${entrada} → ${salida} UTC\n`;
+      sorted.forEach(u => {
+        const horas = Math.floor(u.totalMin / 60);
+        const mins = u.totalMin % 60;
+        const tiempo = horas > 0 ? `${horas}h ${mins}min` : `${mins}min`;
+        const estado = u.activo
+          ? "activo"
+          : u.ultimaSalida
+            ? `salió ${new Date(u.ultimaSalida).toISOString().slice(11, 16)} UTC`
+            : "inactivo";
+        texto += `• **${u.username}** — ${u.mapas} mapas — ${tiempo} — ${estado}\n`;
       });
 
       const embed = new EmbedBuilder()
         .setTitle("📋 Historial del Día")
         .setColor(0xe91e63)
         .setDescription(texto)
-        .setFooter({ text: `Se reinicia a las 10:00 UTC` });
+        .setFooter({ text: "Se reinicia a las 10:00 UTC" });
 
       return interaction.reply({ embeds: [embed] });
     }
