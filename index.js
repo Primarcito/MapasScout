@@ -35,6 +35,12 @@ const procesando = new Set();
 // Historial del día actual (se limpia a las 10 UTC)
 let historialDia = [];
 
+// Log de cambios de admin
+let logAdmin = [];
+
+// Cobertura: tiempo total por mapa { "ciudad__mapa": minutos }
+let coberturaDia = {};
+
 const SCOUT_ROLE_ID = "1422971680480956547";
 
 // alertasMapas[ciudad__mapa] = { messageId, timeout20min, timeout90min }
@@ -157,7 +163,15 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("exportar")
-    .setDescription("Exportar historial del día como CSV (solo líderes)")
+    .setDescription("Exportar historial del día como CSV (solo líderes)"),
+
+  new SlashCommandBuilder()
+    .setName("cobertura")
+    .setDescription("Ver cobertura de mapas del día"),
+
+  new SlashCommandBuilder()
+    .setName("log_admin")
+    .setDescription("Ver log de cambios de admin (solo prio1)")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -171,11 +185,27 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 /* ================= EMBED ================= */
 
+function calcularColorEmbed() {
+  let total = 0, cubiertos = 0;
+  for (const ciudad in mapas) {
+    mapas[ciudad].forEach(mapa => {
+      total++;
+      const users = registros[ciudad]?.[mapa] || [];
+      if (users.length > 0) cubiertos++;
+    });
+  }
+  if (total === 0) return 0xe91e63;
+  const pct = cubiertos / total;
+  if (pct >= 0.8) return 0x57f287; // verde
+  if (pct >= 0.4) return 0xfee75c; // amarillo
+  return 0xe91e63; // rosa/rojo
+}
+
 function generarEmbed() {
   const embed = new EmbedBuilder()
     .setTitle("🗺️ Mapas del Día")
     .setDescription("Usa el botón **Anotarse** para registrarte en un mapa.\nMáximo 5 scouts por mapa.")
-    .setColor(0xe91e63)
+    .setColor(calcularColorEmbed())
     .setFooter({ text: `Actualizado • ${new Date().toLocaleString('es-AR', { timeZone: 'UTC' })} UTC` });
 
   const iconos = {
@@ -277,7 +307,7 @@ function guardarUltimosMapas(userId) {
   if (lista.length > 0) ultimosMapas[userId] = lista;
 }
 
-function cerrarScoutsActivos(userId, username = null) {
+function cerrarScoutsActivos(userId, username = null, motivo = "manual") {
   const entradas = scoutsActivos[userId];
   if (!entradas || entradas.length === 0) return;
 
@@ -291,10 +321,18 @@ function cerrarScoutsActivos(userId, username = null) {
       mapa: entry.mapa,
       inicio: entry.inicio,
       fin,
-      duracionMin
+      duracionMin,
+      motivo
     };
     historialScouts.push(registro);
-    historialDia.push(registro);
+    // Solo agregar al historialDia si no fue por reset
+    if (motivo !== "reset") {
+      historialDia.push(registro);
+    }
+    // Actualizar cobertura
+    const cobKey = `${entry.ciudad}__${entry.mapa}`;
+    if (!coberturaDia[cobKey]) coberturaDia[cobKey] = { ciudad: entry.ciudad, mapa: entry.mapa, minutos: 0 };
+    coberturaDia[cobKey].minutos += duracionMin;
   });
 
   delete scoutsActivos[userId];
@@ -456,11 +494,13 @@ async function ejecutarReset() {
   for (const ciudad in registros) registros[ciudad] = {};
   for (const ciudad in mapas) mapas[ciudad] = [];
 
-  for (const userId in scoutsActivos) cerrarScoutsActivos(userId);
+  for (const userId in scoutsActivos) cerrarScoutsActivos(userId, null, "reset");
 
   ultimosMapas = {};
   ultimaEdicion = null;
   historialDia = [];
+  coberturaDia = {};
+  logAdmin = [];
 
   guardarDatos();
   guardarScouts();
@@ -892,6 +932,89 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
+    if (interaction.commandName === "cobertura") {
+      const iconos = {
+        "Lymhurst": "🌳", "Bridgewatch": "🏜️", "Fort Sterling": "❄️",
+        "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴"
+      };
+
+      let hayDatos = false;
+      let totalMapas = 0, mapasCubiertos = 0;
+
+      const embed = new EmbedBuilder()
+        .setTitle("📊 Cobertura del Día")
+        .setColor(calcularColorEmbed())
+        .setFooter({ text: "Se reinicia a las 10:00 UTC" });
+
+      for (const ciudad in mapas) {
+        if (!mapas[ciudad] || mapas[ciudad].length === 0) continue;
+
+        let texto = "";
+        mapas[ciudad].forEach(mapa => {
+          totalMapas++;
+          const key = `${ciudad}__${mapa}`;
+          const cob = coberturaDia[key];
+          const activos = registros[ciudad]?.[mapa] || [];
+
+          // Tiempo activo actual
+          let minActivo = cob?.minutos || 0;
+          for (const userId in scoutsActivos) {
+            const entry = scoutsActivos[userId].find(e => e.ciudad === ciudad && e.mapa === mapa);
+            if (entry) minActivo += Math.floor((Date.now() - entry.inicio) / 60000);
+          }
+
+          if (minActivo > 0 || activos.length > 0) mapasCubiertos++;
+
+          const horas = Math.floor(minActivo / 60);
+          const mins = minActivo % 60;
+          const tiempo = horas > 0 ? `${horas}h ${mins}min` : `${mins}min`;
+          const estado = activos.length > 0 ? "✅" : minActivo > 0 ? "⚠️" : "❌";
+          texto += `- ${estado} **${mapa}** — ${minActivo > 0 ? tiempo : "sin cobertura"}\n`;
+          hayDatos = true;
+        });
+
+        if (texto) {
+          embed.addFields({ name: `${iconos[ciudad] || "📍"} ${ciudad}`, value: texto, inline: false });
+        }
+      }
+
+      if (!hayDatos) {
+        return interaction.reply({ content: "No hay datos de cobertura aún.", flags: MessageFlags.Ephemeral });
+      }
+
+      const pct = totalMapas > 0 ? Math.round((mapasCubiertos / totalMapas) * 100) : 0;
+      embed.setDescription(`Cobertura total: **${pct}%** (${mapasCubiertos}/${totalMapas} mapas)`);
+
+      return interaction.reply({ embeds: [embed] });
+    }
+
+    if (interaction.commandName === "log_admin") {
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.name.toLowerCase() === "prio1"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({ content: "Necesitas el rol prio1 para usar este comando.", flags: MessageFlags.Ephemeral });
+      }
+
+      if (logAdmin.length === 0) {
+        return interaction.reply({ content: "No hay cambios registrados hoy.", flags: MessageFlags.Ephemeral });
+      }
+
+      let texto = "";
+      logAdmin.slice(-20).forEach(log => {
+        const hora = new Date(log.timestamp).toISOString().slice(11, 16);
+        texto += `• **${log.username}** — ${log.accion} — ${hora} UTC\n`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle("📝 Log de Cambios Admin")
+        .setColor(0xe91e63)
+        .setDescription(texto);
+
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    }
+
     if (interaction.commandName === "historial") {
       // Combinar historialDia con sesiones activas
       const todasSesiones = [...historialDia];
@@ -1029,6 +1152,9 @@ client.on("interactionCreate", async interaction => {
 
       if (!scoutsActivos[userId]) scoutsActivos[userId] = [];
       scoutsActivos[userId].push({ ciudad, mapa, inicio: Date.now(), username: interaction.user.username });
+      // Inicializar cobertura si no existe
+      const cobKey = `${ciudad}__${mapa}`;
+      if (!coberturaDia[cobKey]) coberturaDia[cobKey] = { ciudad, mapa, minutos: 0, inicio: Date.now() };
 
       guardarDatos();
       guardarScouts();
@@ -1232,6 +1358,12 @@ client.on("interactionCreate", async interaction => {
     mapas[ciudad] = nuevos;
     registros[ciudad] = {};
     ultimaEdicion = Date.now();
+    logAdmin.push({
+      userId: interaction.user.id,
+      username: interaction.user.username,
+      accion: `Editó mapas de ${ciudad}`,
+      timestamp: Date.now()
+    });
 
     guardarDatos();
     guardarScouts();
