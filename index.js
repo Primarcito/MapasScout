@@ -217,6 +217,13 @@ function generarEmbed() {
     "Zona Roja": "🔴"
   };
 
+  // Contar scouts activos
+  const totalScoutsActivos = Object.keys(scoutsActivos).length;
+  const descBase = "Usa el botón **Anotarse** para registrarte en un mapa.\nMáximo 5 scouts por mapa.";
+  const descActivos = totalScoutsActivos > 0 ? `\n👥 **${totalScoutsActivos} scout${totalScoutsActivos > 1 ? "s" : ""} activo${totalScoutsActivos > 1 ? "s" : ""}**` : "";
+  embed.setDescription(descBase + descActivos);
+
+  const ahora30 = Date.now();
   let hayMapas = false;
 
   for (const ciudad in mapas) {
@@ -227,9 +234,29 @@ function generarEmbed() {
 
     mapas[ciudad].forEach(mapa => {
       const users = registros[ciudad]?.[mapa] || [];
-      const menciones = users.map(id => `<@${id}>`).join(" ");
+      const menciones = users.map(id => {
+        // Idea 8: mostrar tiempo del scout
+        const entrada = scoutsActivos[id]?.find(e => e.ciudad === ciudad && e.mapa === mapa);
+        if (entrada) {
+          const mins = Math.floor((ahora30 - entrada.inicio) / 60000);
+          const horas = Math.floor(mins / 60);
+          const m = mins % 60;
+          const t = horas > 0 ? `${horas}h${m}m` : `${m}m`;
+          return `<@${id}> ⏱️${t}`;
+        }
+        return `<@${id}>`;
+      }).join(" ");
       const lleno = users.length >= 5;
-      texto += `${lleno ? "🔴 " : "- "}**${mapa}** → ${menciones}\n`;
+
+      // Idea 3: 🚨 si lleva >30min sin scouts
+      const sinScouts = users.length === 0;
+      const cobKey = `${ciudad}__${mapa}`;
+      const ultimaActividad = coberturaDia[cobKey]?.ultimaActividad || null;
+      const minsVacio = sinScouts && ultimaActividad ? Math.floor((ahora30 - ultimaActividad) / 60000) : 0;
+      const alerta = sinScouts && minsVacio > 30;
+
+      const prefijo = lleno ? "🔴 " : alerta ? "🚨 " : "- ";
+      texto += `${prefijo}**${mapa}** → ${menciones}\n`;
     });
 
     embed.addFields({
@@ -360,6 +387,11 @@ function respuestaCiudades() {
   const filas = [];
   let fila = new ActionRowBuilder();
 
+  const iconosCiudad = {
+    "Lymhurst": "🌲", "Bridgewatch": "🏜️", "Fort Sterling": "❄️",
+    "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴"
+  };
+
   ciudadesDisponibles.forEach((ciudad, i) => {
     if (i % 5 === 0 && i !== 0) {
       filas.push(fila);
@@ -368,7 +400,7 @@ function respuestaCiudades() {
     fila.addComponents(
       new ButtonBuilder()
         .setCustomId(`ciudad_btn_${ciudad}`)
-        .setLabel(ciudad)
+        .setLabel(`${iconosCiudad[ciudad] || "📍"} ${ciudad}`)
         .setStyle(ButtonStyle.Secondary)
     );
   });
@@ -531,9 +563,22 @@ function generarEmbedRevision() {
     "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴"
   };
 
+  // Contar revisados
+  let totalRev = 0, revisadosRev = 0;
+  for (const ciudad in mapas) {
+    mapas[ciudad].forEach(mapa => {
+      totalRev++;
+      const key = `${ciudad}__${mapa}`;
+      if (revisionEstado[key]?.revisores?.length > 0) revisadosRev++;
+    });
+  }
+  const barLen = 10;
+  const filled = Math.round((revisadosRev / Math.max(totalRev, 1)) * barLen);
+  const bar = "█".repeat(filled) + "░".repeat(barLen - filled);
+
   const embed = new EmbedBuilder()
-    .setTitle("🔍 Revisión de Mapas")
-    .setDescription("Marca tu mapa cada 5 minutos")
+    .setTitle(`🔍 Revisión de Mapas • ${revisadosRev}/${totalRev}`)
+    .setDescription(`[${bar}] ${Math.round((revisadosRev / Math.max(totalRev, 1)) * 100)}%`)
     .setColor(0xe91e63)
     .setFooter({ text: `Actualizado • ${new Date().toLocaleString('es-AR', { timeZone: 'UTC' })} UTC` });
 
@@ -1134,6 +1179,10 @@ client.on("interactionCreate", async interaction => {
           historialDia.push(reg);
           scoutsActivos[userId] = scoutsActivos[userId].filter(e => !(e.ciudad === ciudad && e.mapa === mapa));
           if (scoutsActivos[userId].length === 0) delete scoutsActivos[userId];
+          // Track ultima actividad para alerta 30min
+          const cobKey2 = `${ciudad}__${mapa}`;
+          if (!coberturaDia[cobKey2]) coberturaDia[cobKey2] = { ciudad, mapa, minutos: 0 };
+          coberturaDia[cobKey2].ultimaActividad = Date.now();
         }
       }
 
