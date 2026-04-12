@@ -171,7 +171,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("log_admin")
-    .setDescription("Ver log de cambios de admin (solo prio1)")
+    .setDescription("Ver log de cambios de admin (solo prio1)"),
+
+  new SlashCommandBuilder()
+    .setName("cargar_mapas")
+    .setDescription("Cargar todos los mapas del día de una vez (solo prio1)")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -787,6 +791,33 @@ client.on("interactionCreate", async interaction => {
       return;
     }
 
+    if (interaction.commandName === "cargar_mapas") {
+      const tieneRol = interaction.member.roles.cache.some(
+        role => role.id === "1476467289418367158" || role.name.toLowerCase() === "prio1"
+      );
+
+      if (!tieneRol) {
+        return interaction.reply({
+          content: "Necesitas el rol prio1 para usar este comando.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId("modal_cargar_mapas")
+        .setTitle("Cargar Mapas del Día");
+
+      const input = new TextInputBuilder()
+        .setCustomId("mapas_bulk_input")
+        .setLabel("Pega todos los mapas (Ciudad: + mapas)")
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder("Thetford:\nDeathwisp Sink\nDrownfield Slough\n\nLymhurst:\nGiantweald Woods")
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
+
     if (interaction.commandName === "editar_mapas") {
       const tieneRol = interaction.member.roles.cache.some(
         role => role.name.toLowerCase() === "prio1"
@@ -1388,6 +1419,96 @@ client.on("interactionCreate", async interaction => {
     return interaction.update({
       content: `✅ Scout <@${userId}> removido correctamente.`,
       components: []
+    });
+  }
+
+  /* ===== MODAL: CARGAR MAPAS BULK ===== */
+
+  if (interaction.isModalSubmit() && interaction.customId === "modal_cargar_mapas") {
+    const texto = interaction.fields.getTextInputValue("mapas_bulk_input");
+    const lineas = texto.split("\n").map(l => l.trim());
+
+    const ciudadesValidas = Object.keys(mapas);
+    const iconosCiudadMap = {
+      "lymhurst": "Lymhurst",
+      "bridgewatch": "Bridgewatch",
+      "fort sterling": "Fort Sterling",
+      "fortsterling": "Fort Sterling",
+      "thetford": "Thetford",
+      "martlock": "Martlock",
+      "zona roja": "Zona Roja",
+      "redzone": "Zona Roja",
+      "red zone": "Zona Roja"
+    };
+
+    let ciudadActual = null;
+    const cambios = {};
+
+    for (const linea of lineas) {
+      if (!linea) continue;
+
+      // Detectar si es una ciudad
+      const lineaLower = linea.toLowerCase().replace(/:$/, "").trim();
+      const ciudadMatch = iconosCiudadMap[lineaLower] ||
+        ciudadesValidas.find(c => c.toLowerCase() === lineaLower);
+
+      if (ciudadMatch || linea.endsWith(":")) {
+        ciudadActual = ciudadMatch || ciudadesValidas.find(
+          c => c.toLowerCase() === linea.replace(/:$/, "").trim().toLowerCase()
+        );
+        if (ciudadActual && !cambios[ciudadActual]) {
+          cambios[ciudadActual] = [];
+        }
+        continue;
+      }
+
+      // Detectar "0 mapas" o "0 map"
+      if (/^0\s*(map|mapas?)/i.test(linea)) {
+        if (ciudadActual) cambios[ciudadActual] = [];
+        continue;
+      }
+
+      // Es un mapa
+      if (ciudadActual && linea.length > 0) {
+        cambios[ciudadActual].push(linea);
+      }
+    }
+
+    if (Object.keys(cambios).length === 0) {
+      return interaction.reply({
+        content: "No se detectó ninguna ciudad válida. Verificá el formato.",
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    // Aplicar cambios
+    const ciudadesEditadas = [];
+    for (const ciudad in cambios) {
+      // Cerrar scouts activos de esa ciudad
+      for (const userId in scoutsActivos) {
+        scoutsActivos[userId] = (scoutsActivos[userId] || []).filter(e => e.ciudad !== ciudad);
+        if (scoutsActivos[userId].length === 0) delete scoutsActivos[userId];
+      }
+      mapas[ciudad] = cambios[ciudad];
+      registros[ciudad] = {};
+      ciudadesEditadas.push(`${ciudad} (${cambios[ciudad].length} mapas)`);
+
+      logAdmin.push({
+        userId: interaction.user.id,
+        username: interaction.user.username,
+        accion: `Cargó mapas de ${ciudad} via /cargar_mapas`,
+        timestamp: Date.now()
+      });
+    }
+
+    ultimaEdicion = Date.now();
+    guardarDatos();
+    guardarScouts();
+    await actualizarPanel();
+
+    return interaction.reply({
+      content: `✅ Mapas cargados:\n${ciudadesEditadas.map(c => `• ${c}`).join("\n")}`,
+      flags: MessageFlags.Ephemeral
     });
   }
 
