@@ -42,6 +42,24 @@ let logAdmin = [];
 let coberturaDia = {};
 
 const SCOUT_ROLE_ID = "1422971680480956547";
+const REVISION_CHANNEL_ID = "1486359169786183811";
+const REVISION_PANEL_FILE = './revision_panel.json';
+
+let revisionChannelId = REVISION_CHANNEL_ID;
+let revisionMessageId = null;
+
+function guardarRevisionPanel() {
+  fs.writeFileSync(REVISION_PANEL_FILE, JSON.stringify({ messageId: revisionMessageId }, null, 2));
+}
+
+function cargarRevisionPanel() {
+  if (fs.existsSync(REVISION_PANEL_FILE)) {
+    const data = JSON.parse(fs.readFileSync(REVISION_PANEL_FILE, 'utf8'));
+    revisionMessageId = data.messageId || null;
+  }
+}
+
+cargarRevisionPanel();
 
 // alertasMapas[ciudad__mapa] = { messageId, timeout20min, timeout90min }
 const alertasMapas = {};
@@ -650,11 +668,13 @@ function componentesRevision() {
       const revisado = estado?.revisores?.length > 0;
       const mins = revisado ? Math.floor((Date.now() - estado.revisadoEn) / 60000) : 0;
       const expirado = revisado && mins >= 15;
+      const iconoBtn = { "Lymhurst": "🌲", "Bridgewatch": "🏜️", "Fort Sterling": "❄️", "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴" };
+      const emoji = iconoBtn[ciudad] || "📍";
 
       fila.addComponents(
         new ButtonBuilder()
           .setCustomId(`revision_btn_${key}`)
-          .setLabel(revisado && !expirado ? `✅ ${mapa}` : mapa)
+          .setLabel(revisado && !expirado ? `✅ ${emoji} ${mapa}` : `${emoji} ${mapa}`)
           .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
       );
 
@@ -667,15 +687,40 @@ function componentesRevision() {
 }
 
 async function actualizarRevision() {
-  if (!revisionMessage) return;
   try {
-    await revisionMessage.edit({
-      embeds: [generarEmbedRevision()],
-      components: componentesRevision()
-    });
+    if (revisionMessage) {
+      await revisionMessage.edit({
+        embeds: [generarEmbedRevision()],
+        components: componentesRevision()
+      });
+    } else {
+      await crearPanelRevision();
+    }
   } catch (err) {
     console.error("Error actualizando panel revisión:", err);
     revisionMessage = null;
+    revisionMessageId = null;
+    await crearPanelRevision();
+  }
+}
+
+async function crearPanelRevision() {
+  try {
+    const channel = await client.channels.fetch(REVISION_CHANNEL_ID);
+    if (!channel) return;
+
+    const comps = componentesRevision();
+    const msg = await channel.send({
+      embeds: [generarEmbedRevision()],
+      components: comps.length > 0 ? comps : []
+    });
+
+    revisionMessage = msg;
+    revisionMessageId = msg.id;
+    guardarRevisionPanel();
+    console.log("Panel de revisión creado/recreado");
+  } catch (err) {
+    console.error("Error creando panel revisión:", err);
   }
 }
 
@@ -928,14 +973,19 @@ client.on("interactionCreate", async interaction => {
         delete revisionEstado[key];
       }
 
-      // Intentar borrar el mensaje del panel de revisión
+      // Borrar mensaje viejo
       if (revisionMessage) {
         try { await revisionMessage.delete(); } catch (e) {}
         revisionMessage = null;
+        revisionMessageId = null;
+        guardarRevisionPanel();
       }
 
+      // Recrear panel en el canal fijo
+      await crearPanelRevision();
+
       return interaction.reply({
-        content: "✅ Panel de revisión limpiado.",
+        content: "✅ Panel de revisión reseteado.",
         flags: MessageFlags.Ephemeral
       });
     }
@@ -1603,13 +1653,31 @@ client.once("clientReady", async () => {
     console.log("Panel.json limpiado, usar /panel_mapas para recrear.");
   }
 
+  // Recuperar o crear panel de revisión
+  try {
+    const revChannel = await client.channels.fetch(REVISION_CHANNEL_ID);
+    if (revisionMessageId) {
+      try {
+        revisionMessage = await revChannel.messages.fetch(revisionMessageId);
+        console.log("Panel de revisión recuperado");
+      } catch (e) {
+        console.log("Panel de revisión no encontrado, creando nuevo...");
+        revisionMessage = null;
+        revisionMessageId = null;
+        await crearPanelRevision();
+      }
+    } else {
+      await crearPanelRevision();
+    }
+  } catch (err) {
+    console.error("Error recuperando canal de revisión:", err);
+  }
+
   programarReset();
 
   // Auto-actualizar panel de revisión cada minuto
   setInterval(async () => {
-    if (revisionMessage && Object.keys(revisionEstado).length > 0) {
-      await actualizarRevision();
-    }
+    await actualizarRevision();
   }, 60 * 1000);
 });
 
