@@ -61,6 +61,8 @@ function cargarRevisionPanel() {
 
 cargarRevisionPanel();
 
+cargarRevisionPanel();
+
 // alertasMapas[ciudad__mapa] = { messageId, timeout20min, timeout90min }
 const alertasMapas = {};
 
@@ -649,42 +651,135 @@ function generarEmbedRevision() {
   return embed;
 }
 
-function componentesRevision() {
+function contarMapasRevision() {
+  let total = 0;
+  for (const ciudad in mapas) {
+    if (mapas[ciudad] && mapas[ciudad].length > 0) total += mapas[ciudad].length;
+  }
+  return total;
+}
+
+function componentesRevisionCiudades() {
+  // Botones de ciudad cuando hay >25 mapas
+  const iconoBtn = { "Lymhurst": "🌲", "Bridgewatch": "🏜️", "Fort Sterling": "❄️", "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴" };
   const filas = [];
   let fila = new ActionRowBuilder();
   let count = 0;
 
   for (const ciudad in mapas) {
     if (!mapas[ciudad] || mapas[ciudad].length === 0) continue;
+    if (count % 5 === 0 && count !== 0) {
+      filas.push(fila);
+      fila = new ActionRowBuilder();
+    }
+    // Contar revisados en esta ciudad
+    const revisadosCiudad = mapas[ciudad].filter(mapa => {
+      const key = `${ciudad}__${mapa}`;
+      return revisionEstado[key]?.revisores?.length > 0;
+    }).length;
+    const totalCiudad = mapas[ciudad].length;
+    const emoji = iconoBtn[ciudad] || "📍";
+    const label = `${emoji} ${ciudad} (${revisadosCiudad}/${totalCiudad})`;
 
-    mapas[ciudad].forEach(mapa => {
+    fila.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`revision_ciudad_${ciudad}`)
+        .setLabel(label)
+        .setStyle(revisadosCiudad === totalCiudad ? ButtonStyle.Success : ButtonStyle.Secondary)
+    );
+    count++;
+  }
+  if (count > 0) filas.push(fila);
+  return filas;
+}
+
+function componentesRevisionMapas(ciudad) {
+  // Botones de mapas de una ciudad específica
+  const iconoBtn = { "Lymhurst": "🌲", "Bridgewatch": "🏜️", "Fort Sterling": "❄️", "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴" };
+  const filas = [];
+  let fila = new ActionRowBuilder();
+  let count = 0;
+
+  (mapas[ciudad] || []).forEach(mapa => {
+    if (count % 5 === 0 && count !== 0) {
+      filas.push(fila);
+      fila = new ActionRowBuilder();
+    }
+    const key = `${ciudad}__${mapa}`;
+    const estado = revisionEstado[key];
+    const revisado = estado?.revisores?.length > 0;
+    const mins = revisado ? Math.floor((Date.now() - estado.revisadoEn) / 60000) : 0;
+    const expirado = revisado && mins >= 15;
+    const emoji = iconoBtn[ciudad] || "📍";
+    const label = revisado && !expirado ? `✅ ${emoji} ${mapa}` : `${emoji} ${mapa}`;
+
+    fila.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`revision_btn_${key}`)
+        .setLabel(label)
+        .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
+    );
+    count++;
+  });
+
+  if (count > 0) filas.push(fila);
+
+  // Botón volver
+  filas.push(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("revision_volver_ciudades")
+        .setLabel("← Volver")
+        .setStyle(ButtonStyle.Secondary)
+    )
+  );
+
+  return filas;
+}
+
+function componentesRevision(ciudad = null) {
+  const totalMapas = contarMapasRevision();
+
+  if (totalMapas > 25) {
+    // Modo ciudad
+    if (ciudad) return componentesRevisionMapas(ciudad);
+    return componentesRevisionCiudades();
+  }
+
+  // Modo normal - todos los botones directos
+  const filas = [];
+  let fila = new ActionRowBuilder();
+  let count = 0;
+
+  for (const c in mapas) {
+    if (!mapas[c] || mapas[c].length === 0) continue;
+    mapas[c].forEach(mapa => {
       if (count % 5 === 0 && count !== 0) {
         filas.push(fila);
         fila = new ActionRowBuilder();
       }
-
-      const key = `${ciudad}__${mapa}`;
+      const key = `${c}__${mapa}`;
       const estado = revisionEstado[key];
       const revisado = estado?.revisores?.length > 0;
       const mins = revisado ? Math.floor((Date.now() - estado.revisadoEn) / 60000) : 0;
       const expirado = revisado && mins >= 15;
       const iconoBtn = { "Lymhurst": "🌲", "Bridgewatch": "🏜️", "Fort Sterling": "❄️", "Thetford": "🌾", "Martlock": "⛰️", "Zona Roja": "🔴" };
-      const emoji = iconoBtn[ciudad] || "📍";
+      const emoji = iconoBtn[c] || "📍";
+      const label = revisado && !expirado ? `✅ ${emoji} ${mapa}` : `${emoji} ${mapa}`;
 
       fila.addComponents(
         new ButtonBuilder()
           .setCustomId(`revision_btn_${key}`)
-          .setLabel(revisado && !expirado ? `✅ ${emoji} ${mapa}` : `${emoji} ${mapa}`)
+          .setLabel(label)
           .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
       );
-
       count++;
     });
   }
-
   if (count > 0) filas.push(fila);
   return filas;
 }
+
 
 async function actualizarRevision() {
   try {
@@ -1393,6 +1488,27 @@ client.on("interactionCreate", async interaction => {
     if (!respuesta) respuesta = "No se pudo volver a ningún mapa.";
 
     return interaction.reply({ content: respuesta, flags: MessageFlags.Ephemeral });
+  }
+
+  /* ===== BOTÓN: REVISIÓN CIUDAD ===== */
+
+  if (interaction.isButton() && interaction.customId.startsWith("revision_ciudad_")) {
+    const ciudad = interaction.customId.replace("revision_ciudad_", "");
+    await interaction.update({
+      embeds: [generarEmbedRevision()],
+      components: componentesRevision(ciudad)
+    });
+    return;
+  }
+
+  /* ===== BOTÓN: REVISIÓN VOLVER CIUDADES ===== */
+
+  if (interaction.isButton() && interaction.customId === "revision_volver_ciudades") {
+    await interaction.update({
+      embeds: [generarEmbedRevision()],
+      components: componentesRevision()
+    });
+    return;
   }
 
   /* ===== BOTÓN: REVISIÓN MAPA ===== */
