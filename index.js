@@ -1369,7 +1369,7 @@ client.on("interactionCreate", async interaction => {
 
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `❌ Saliste de **${mapa}**\n\n` + resp.content;
-      return interaction.update(resp);
+      return interaction.editReply(resp);
 
     } else if (registros[ciudad][mapa].length < 5) {
       // No está anotado y hay lugar → anotarlo
@@ -1388,12 +1388,12 @@ client.on("interactionCreate", async interaction => {
 
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `✅ Listo causa, ya estás en **${mapa}**\n\n` + resp.content;
-      return interaction.update(resp);
+      return interaction.editReply(resp);
     } else {
       // Lleno
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `⚠️ **${mapa}** está lleno.\n\n` + resp.content;
-      return interaction.update(resp);
+      return interaction.editReply(resp);
     }
   }
 
