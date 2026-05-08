@@ -1,0 +1,48 @@
+// Estado global compartido — todos los módulos importan este mismo objeto por referencia.
+module.exports = {
+  client: null,
+
+  procesando: new Set(),
+
+  // Historial del día actual (se limpia a las 10 UTC)
+  historialDia: [],
+
+  // Log de cambios de admin
+  logAdmin: [],
+
+  // Cobertura: tiempo total por mapa { "ciudad__mapa": { ciudad, mapa, minutos, ... } }
+  coberturaDia: {},
+
+  // alertasMapas[ciudad__mapa] = { messageId, timeout20min, timeout90min }
+  alertasMapas: {},
+
+  revisionMessageId: null,
+  panelChannelId: null,
+  panelMessageId: null,
+
+  // scoutsActivos[userId] = [ { ciudad, mapa, inicio, username }, ... ]
+  scoutsActivos: {},
+  historialScouts: [],
+
+  // ultimosMapas[userId] = [ { ciudad, mapa }, ... ]
+  ultimosMapas: {},
+
+  mapas: {
+    "Lymhurst": [],
+    "Bridgewatch": [],
+    "Fort Sterling": [],
+    "Thetford": [],
+    "Martlock": [],
+    "Zona Roja": []
+  },
+
+  registros: {},
+  panelMessage: null,
+
+  // Timestamp de la última edición de mapas
+  ultimaEdicion: null,
+
+  revisionMessage: null,
+  // revisionEstado[ciudad__mapa] = { revisadoEn: timestamp, revisores: [...] }
+  revisionEstado: {}
+};
