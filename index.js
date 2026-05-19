@@ -10,6 +10,7 @@ const { generarEmbedRevision } = require('./embeds/revisionEmbed');
 const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
 const { actualizarRevision, crearPanelRevision } = require('./utils/panel');
+const { startApiServer } = require('./api');
 
 /* ================= CARGAR DATOS PERSISTIDOS ================= */
 
@@ -17,6 +18,7 @@ cargarDatos();
 cargarScouts();
 cargarPanel();
 cargarRevisionPanel();
+startApiServer();
 
 /* ================= CREAR CLIENT ================= */
 
