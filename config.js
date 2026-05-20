@@ -1,21 +1,35 @@
 require('dotenv').config();
+const settings = require('./settings');
+const { SERVER_IDS, ROLE_IDS } = require('./permissions');
+
+function firstId(ids) {
+  return Array.isArray(ids) ? ids[0] : ids;
+}
+
+function mentionRoles(ids) {
+  const roleIds = Array.isArray(ids) ? ids : [ids];
+  return roleIds.map(id => `<@&${id}>`).join(' ');
+}
 
 module.exports = {
   TOKEN: process.env.TOKEN,
   CLIENT_ID: process.env.CLIENT_ID || "1473617798600200342",
-  GUILD_ID: process.env.GUILD_ID || "969420681349574677",
+  GUILD_ID: SERVER_IDS.main,
 
-  SCOUT_ROLE_ID: "1422971680480956547",
-  PRIO1_ROLE_ID: "1476467289418367158",
-  LIDER_ROLE_ID: "983987481961717782",
+  SCOUT_ROLE_ID: firstId(ROLE_IDS.scout),
+  SCOUT_ROLE_IDS: ROLE_IDS.scout,
+  SCOUT_ROLE_MENTIONS: mentionRoles(ROLE_IDS.scout),
+  ADMIN_ROLE_IDS: ROLE_IDS.admin,
+  LIDER_ROLE_IDS: ROLE_IDS.lider,
 
-  REVISION_CHANNEL_ID: "1486359169786183811",
-  ARCHIVE_CHANNEL_ID: "1437299088721973288",
+  REVISION_CHANNEL_ID: settings.channels.revision,
+  ARCHIVE_CHANNEL_ID: settings.channels.archive,
 
-  DATA_FILE: 'data.json',
-  SCOUT_FILE: 'scouts.json',
-  PANEL_FILE: 'panel.json',
-  REVISION_PANEL_FILE: 'revision_panel.json',
+  DATA_DIR: settings.files.dataDir,
+  DATA_FILE: settings.files.data,
+  SCOUT_FILE: settings.files.scouts,
+  PANEL_FILE: settings.files.panel,
+  REVISION_PANEL_FILE: settings.files.revisionPanel,
 
   ICONOS_CIUDAD: {
     "Lymhurst": "🌲",

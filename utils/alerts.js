@@ -73,8 +73,8 @@ async function enviarRecordatorioMapasVacios() {
 
   try {
     await state.panelMessage.channel.send({
-      content: `<@&${config.SCOUT_ROLE_ID}> ⚠️ Estos mapas llevan rato solos causitas: ${vacios.map(m => `**${m}**`).join(", ")}`,
-      allowedMentions: { roles: [config.SCOUT_ROLE_ID] }
+      content: `${config.SCOUT_ROLE_MENTIONS} ⚠️ Estos mapas llevan rato solos causitas: ${vacios.map(m => `**${m}**`).join(", ")}`,
+      allowedMentions: { roles: config.SCOUT_ROLE_IDS }
     });
   } catch (err) {
     console.error("Error enviando recordatorio:", err);

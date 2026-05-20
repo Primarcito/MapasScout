@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, MessageFlags, StringSelectMenuBuilder, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
+const { canManageMaps } = require('../permissions');
 const { guardarPanel, guardarDatos, guardarScouts } = require('../data/persistence');
 const { generarEmbed } = require('../embeds/panelEmbed');
 const { componentesPanel } = require('../components/panelComponents');
@@ -31,13 +32,10 @@ module.exports = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     
-    // Todos los subcomandos excepto 'panel' requieren rol prio1
+    // Todos los subcomandos excepto 'panel' requieren permiso admin
     if (sub !== "panel") {
-      const tieneRol = interaction.member.roles.cache.some(
-        role => role.id === config.PRIO1_ROLE_ID || role.name.toLowerCase() === "prio1"
-      );
-      if (!tieneRol) {
-        return interaction.reply({ content: "Necesitas el rol prio1 para usar este comando.", flags: MessageFlags.Ephemeral });
+      if (!canManageMaps(interaction.member)) {
+        return interaction.reply({ content: "No tienes permiso para administrar mapas.", flags: MessageFlags.Ephemeral });
       }
     }
 

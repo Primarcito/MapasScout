@@ -1,7 +1,8 @@
 const http = require('http');
 const state = require('./data/state');
+const settings = require('./settings');
 
-const PORT = Number(process.env.PORT || 8080);
+const PORT = settings.api.port;
 
 function startApiServer() {
   const server = http.createServer((req, res) => {

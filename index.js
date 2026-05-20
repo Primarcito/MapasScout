@@ -11,6 +11,7 @@ const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
 const { actualizarRevision, crearPanelRevision } = require('./utils/panel');
 const { startApiServer } = require('./api');
+const { canScout } = require('./permissions');
 
 /* ================= CARGAR DATOS PERSISTIDOS ================= */
 
@@ -59,11 +60,7 @@ client.on("messageCreate", async message => {
   if (message.author.bot) return;
   if (message.content.toLowerCase() !== "!revisar") return;
 
-  const tieneRol = message.member?.roles.cache.some(
-    role => role.name.toLowerCase() === "scout"
-  );
-
-  if (!tieneRol) {
+  if (!canScout(message.member)) {
     return message.reply("Necesitas el rol Scout para usar este comando.");
   }
 

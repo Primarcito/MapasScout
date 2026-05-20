@@ -3,9 +3,14 @@ const path = require('path');
 const config = require('../config');
 const state = require('./state');
 
-const ROOT = path.join(__dirname, '..');
+const ROOT = config.DATA_DIR || path.join(__dirname, '..');
+
+function ensureRoot() {
+  if (!fs.existsSync(ROOT)) fs.mkdirSync(ROOT, { recursive: true });
+}
 
 function guardarDatos() {
+  ensureRoot();
   fs.writeFileSync(
     path.join(ROOT, config.DATA_FILE),
     JSON.stringify({ mapas: state.mapas, registros: state.registros, ultimaEdicion: state.ultimaEdicion }, null, 2)
@@ -23,6 +28,7 @@ function cargarDatos() {
 }
 
 function guardarScouts() {
+  ensureRoot();
   fs.writeFileSync(
     path.join(ROOT, config.SCOUT_FILE),
     JSON.stringify({
@@ -46,6 +52,7 @@ function cargarScouts() {
 }
 
 function guardarPanel() {
+  ensureRoot();
   fs.writeFileSync(
     path.join(ROOT, config.PANEL_FILE),
     JSON.stringify({ channelId: state.panelChannelId, messageId: state.panelMessageId }, null, 2)
@@ -62,6 +69,7 @@ function cargarPanel() {
 }
 
 function guardarRevisionPanel() {
+  ensureRoot();
   fs.writeFileSync(
     path.join(ROOT, config.REVISION_PANEL_FILE),
     JSON.stringify({ messageId: state.revisionMessageId }, null, 2)

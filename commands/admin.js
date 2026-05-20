@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, MessageFlags, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder } = require('discord.js');
 const state = require('../data/state');
+const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel, crearPanelRevision } = require('../utils/panel');
@@ -22,12 +23,8 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const tieneRol = interaction.member.roles.cache.some(
-      role => role.name.toLowerCase() === "prio1"
-    );
-
-    if (!tieneRol) {
-      return interaction.reply({ content: "Necesitas el rol prio1 para usar este comando.", flags: MessageFlags.Ephemeral });
+    if (!canUseAdmin(interaction.member)) {
+      return interaction.reply({ content: "No tienes permiso de admin para usar este comando.", flags: MessageFlags.Ephemeral });
     }
 
     const sub = interaction.options.getSubcommand();

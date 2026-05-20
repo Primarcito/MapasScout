@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
+const { canReview, canExport } = require('../permissions');
 const { componentesRevision } = require('../components/revisionComponents');
 const { generarEmbedRevision } = require('../embeds/revisionEmbed');
 const { calcularTiempoReal } = require('../utils/timeCalc');
@@ -140,11 +141,7 @@ module.exports = {
 
     /* ===== REVISAR ===== */
     if (sub === "revisar") {
-      const tieneRol = interaction.member.roles.cache.some(
-        role => role.name.toLowerCase() === "scout"
-      );
-
-      if (!tieneRol) {
+      if (!canReview(interaction.member)) {
         return interaction.reply({
           content: "Necesitas el rol Scout para usar este comando.",
           flags: MessageFlags.Ephemeral
@@ -171,11 +168,7 @@ module.exports = {
 
     /* ===== EXPORTAR ===== */
     if (sub === "exportar") {
-      const tieneRol = interaction.member.roles.cache.some(
-        role => role.id === config.LIDER_ROLE_ID
-      );
-
-      if (!tieneRol) {
+      if (!canExport(interaction.member)) {
         return interaction.reply({
           content: "Necesitas el rol Líder para usar este comando.",
           flags: MessageFlags.Ephemeral

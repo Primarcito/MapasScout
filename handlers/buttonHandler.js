@@ -1,6 +1,7 @@
 const { MessageFlags } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
+const { canScout } = require('../permissions');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
 const { respuestaCiudades, respuestaMapas } = require('../components/panelComponents');
 const { componentesRevision } = require('../components/revisionComponents');
@@ -225,10 +226,7 @@ module.exports = async function handleButton(interaction) {
     const [ciudad, mapa] = key.split("__");
 
     // Verificar rol Scout
-    const tieneRol = interaction.member?.roles.cache.some(
-      role => role.id === config.SCOUT_ROLE_ID
-    );
-    if (!tieneRol) {
+    if (!canScout(interaction.member)) {
       return interaction.editReply({ content: "Necesitas el rol Scout para marcar mapas." });
     }
 
