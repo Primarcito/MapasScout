@@ -44,6 +44,8 @@ const commands = getCommandsMap();
 /* ================= ROUTER DE INTERACCIONES ================= */
 
 client.on("interactionCreate", async interaction => {
+  if (interaction.guildId !== config.GUILD_ID) return;
+
   if (interaction.isChatInputCommand()) {
     const cmd = commands.get(interaction.commandName);
     if (cmd) return cmd.execute(interaction);
