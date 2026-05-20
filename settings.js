@@ -27,10 +27,10 @@ const SETTINGS = {
 
   channels: {
     // Canal fijo donde vive el panel de revision.
-    revision: '1486359169786183811',
+    revision: '1505951463460044913',
 
     // Canal donde se archiva el resumen diario.
-    archive: '1437299088721973288',
+    archive: '1505984531063377970',
   },
 
   files: {
