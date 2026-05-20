@@ -14,6 +14,7 @@ const SETTINGS = {
     // Puede cargar, editar, resetear mapas y usar comandos admin.
     admin: [
       '1506387790265581588',
+      '1435778823743340652',
       // 'OTRO_ROL_ID',
     ],
 
