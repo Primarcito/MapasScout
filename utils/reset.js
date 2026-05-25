@@ -3,6 +3,7 @@ const { guardarDatos, guardarScouts } = require('../data/persistence');
 const { cerrarScoutsActivos } = require('./scouts');
 const { actualizarPanel } = require('./panel');
 const { generarEmbedHistorial } = require('../commands/scout');
+const { cancelScoutVerification } = require('./verification');
 const config = require('../config');
 
 function programarReset() {
@@ -73,7 +74,10 @@ async function ejecutarReset() {
   for (const ciudad in state.registros) state.registros[ciudad] = {};
   for (const ciudad in state.mapas) state.mapas[ciudad] = [];
 
-  for (const userId in state.scoutsActivos) cerrarScoutsActivos(userId, null, "reset");
+  for (const userId in state.scoutsActivos) {
+    cerrarScoutsActivos(userId, null, "reset");
+    await cancelScoutVerification(userId, "Verificacion cancelada: reset diario completado.");
+  }
 
   state.ultimosMapas = {};
   state.ultimaEdicion = null;

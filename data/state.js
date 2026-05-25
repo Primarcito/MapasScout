@@ -24,6 +24,9 @@ module.exports = {
   scoutsActivos: {},
   historialScouts: [],
 
+  // verificacionesScout[userId] = { status, messageId, channelId, reviewMessageId, expiresAt, ... }
+  verificacionesScout: {},
+
   // ultimosMapas[userId] = [ { ciudad, mapa }, ... ]
   ultimosMapas: {},
 

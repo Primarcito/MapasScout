@@ -3,6 +3,7 @@ const state = require('../data/state');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
 const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel } = require('../utils/panel');
+const { cancelScoutVerification } = require('../utils/verification');
 
 module.exports = async function handleSelect(interaction) {
 
@@ -31,6 +32,7 @@ module.exports = async function handleSelect(interaction) {
     const userId = interaction.values[0];
 
     cerrarScoutsActivos(userId);
+    await cancelScoutVerification(userId, "Verificacion cancelada: el scout fue removido por admin.");
     borrarRegistrosUsuario(userId);
 
     guardarDatos();

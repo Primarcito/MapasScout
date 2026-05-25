@@ -3,6 +3,7 @@ const state = require('../data/state');
 const config = require('../config');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
 const { actualizarPanel } = require('../utils/panel');
+const { cancelScoutVerification } = require('../utils/verification');
 
 module.exports = async function handleModal(interaction) {
 
@@ -59,8 +60,12 @@ module.exports = async function handleModal(interaction) {
     for (const ciudad in cambios) {
       // Cerrar scouts activos de esa ciudad
       for (const userId in state.scoutsActivos) {
+        const teniaCiudad = (state.scoutsActivos[userId] || []).some(e => e.ciudad === ciudad);
         state.scoutsActivos[userId] = (state.scoutsActivos[userId] || []).filter(e => e.ciudad !== ciudad);
-        if (state.scoutsActivos[userId].length === 0) delete state.scoutsActivos[userId];
+        if (teniaCiudad) await cancelScoutVerification(userId, "Verificacion cancelada: mapas actualizados por admin.");
+        if (state.scoutsActivos[userId].length === 0) {
+          delete state.scoutsActivos[userId];
+        }
       }
       state.mapas[ciudad] = cambios[ciudad];
       state.registros[ciudad] = {};
@@ -94,8 +99,12 @@ module.exports = async function handleModal(interaction) {
 
     // Limpiar scouts activos de esa ciudad
     for (const userId in state.scoutsActivos) {
+      const teniaCiudad = (state.scoutsActivos[userId] || []).some(e => e.ciudad === ciudad);
       state.scoutsActivos[userId] = (state.scoutsActivos[userId] || []).filter(e => e.ciudad !== ciudad);
-      if (state.scoutsActivos[userId].length === 0) delete state.scoutsActivos[userId];
+      if (teniaCiudad) await cancelScoutVerification(userId, "Verificacion cancelada: mapas actualizados por admin.");
+      if (state.scoutsActivos[userId].length === 0) {
+        delete state.scoutsActivos[userId];
+      }
     }
 
     state.mapas[ciudad] = nuevos;

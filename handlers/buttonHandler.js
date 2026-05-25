@@ -9,8 +9,13 @@ const { generarEmbedRevision } = require('../embeds/revisionEmbed');
 const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { verificarMapaVacio } = require('../utils/alerts');
+const { isVerificationButton, handleVerificationButton, cancelScoutVerification } = require('../utils/verification');
 
 module.exports = async function handleButton(interaction) {
+
+  if (isVerificationButton(interaction.customId)) {
+    return handleVerificationButton(interaction);
+  }
 
   /* ===== ABRIR ANOTARSE ===== */
 
@@ -57,7 +62,10 @@ module.exports = async function handleButton(interaction) {
           state.historialScouts.push(reg);
           state.historialDia.push(reg);
           state.scoutsActivos[userId] = state.scoutsActivos[userId].filter(e => !(e.ciudad === ciudad && e.mapa === mapa));
-          if (state.scoutsActivos[userId].length === 0) delete state.scoutsActivos[userId];
+          await cancelScoutVerification(userId, "Verificacion cancelada: cambiaste tus mapas activos.");
+          if (state.scoutsActivos[userId].length === 0) {
+            delete state.scoutsActivos[userId];
+          }
           // Track ultima actividad para alerta 30min
           const cobKey2 = `${ciudad}__${mapa}`;
           if (!state.coberturaDia[cobKey2]) state.coberturaDia[cobKey2] = { ciudad, mapa, minutos: 0 };
@@ -124,6 +132,7 @@ module.exports = async function handleButton(interaction) {
     }
 
     cerrarScoutsActivos(userId);
+    await cancelScoutVerification(userId, "Verificacion cancelada: el scout salio de sus mapas.");
     borrarRegistrosUsuario(userId);
     guardarDatos();
     guardarScouts();

@@ -7,6 +7,7 @@ const { generarEmbed } = require('../embeds/panelEmbed');
 const { componentesPanel } = require('../components/panelComponents');
 const { actualizarPanel } = require('../utils/panel');
 const { cerrarScoutsActivos } = require('../utils/scouts');
+const { cancelScoutVerification } = require('../utils/verification');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -88,6 +89,7 @@ module.exports = {
     if (sub === "reset") {
       for (const userId in state.scoutsActivos) {
         cerrarScoutsActivos(userId);
+        await cancelScoutVerification(userId, "Verificacion cancelada: el panel fue reseteado.");
       }
 
       for (const ciudad in state.mapas) state.mapas[ciudad] = [];

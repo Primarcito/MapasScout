@@ -12,13 +12,13 @@ function guardarUltimosMapas(userId) {
   if (lista.length > 0) state.ultimosMapas[userId] = lista;
 }
 
-function cerrarScoutsActivos(userId, username = null, motivo = "manual") {
+function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOverride = null) {
   const entradas = state.scoutsActivos[userId];
   if (!entradas || entradas.length === 0) return;
 
-  const fin = Date.now();
+  const fin = finOverride || Date.now();
   entradas.forEach(entry => {
-    const duracionMin = Math.floor((fin - entry.inicio) / 60000);
+    const duracionMin = Math.max(0, Math.floor((fin - entry.inicio) / 60000));
     const registro = {
       userId,
       username: username || entry.username || userId,
@@ -38,6 +38,7 @@ function cerrarScoutsActivos(userId, username = null, motivo = "manual") {
     const cobKey = `${entry.ciudad}__${entry.mapa}`;
     if (!state.coberturaDia[cobKey]) state.coberturaDia[cobKey] = { ciudad: entry.ciudad, mapa: entry.mapa, minutos: 0 };
     state.coberturaDia[cobKey].minutos += duracionMin;
+    state.coberturaDia[cobKey].ultimaActividad = fin;
   });
 
   delete state.scoutsActivos[userId];

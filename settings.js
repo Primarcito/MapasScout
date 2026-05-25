@@ -23,6 +23,12 @@ const SETTINGS = {
       '1435778823743340652',
       // 'OTRO_ROL_ID',
     ],
+
+    // Puede aprobar o retirar verificaciones de captura de scouts.
+    scoutVerifier: [
+      '1505949443529375845',
+      '1435778823743340652',
+    ],
   },
 
   channels: {
@@ -31,6 +37,9 @@ const SETTINGS = {
 
     // Canal donde se archiva el resumen diario.
     archive: '1505984531063377970',
+
+    // Canal donde los admins revisan capturas de scouts activos.
+    scoutVerificationAdmin: '1508497419132993626',
   },
 
   files: {
@@ -47,6 +56,14 @@ const SETTINGS = {
   api: {
     // Puerto HTTP para exponer /mapas.
     port: Number(process.env.PORT || 8080),
+  },
+
+  verification: {
+    // Corta sesiones abiertas que nadie confirma, para evitar horas infinitas.
+    enabled: process.env.SCOUT_VERIFICATION_ENABLED !== 'false',
+    maxActiveMinutes: Number(process.env.SCOUT_VERIFICATION_MAX_MINUTES || 120),
+    graceMinutes: Number(process.env.SCOUT_VERIFICATION_GRACE_MINUTES || 10),
+    checkIntervalMinutes: Number(process.env.SCOUT_VERIFICATION_CHECK_MINUTES || 5),
   },
 };
 

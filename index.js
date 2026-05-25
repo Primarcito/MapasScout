@@ -10,6 +10,7 @@ const { generarEmbedRevision } = require('./embeds/revisionEmbed');
 const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
 const { actualizarRevision, crearPanelRevision } = require('./utils/panel');
+const { startScoutVerification, handleScoutVerificationMessage } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
 
@@ -60,6 +61,9 @@ client.on("interactionCreate", async interaction => {
 
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
+
+  if (await handleScoutVerificationMessage(message)) return;
+
   if (message.content.toLowerCase() !== "!revisar") return;
 
   if (!canScout(message.member)) {
@@ -132,6 +136,7 @@ client.once("clientReady", async () => {
   }
 
   programarReset();
+  startScoutVerification();
 
   // Auto-actualizar panel de revisión cada minuto
   setInterval(async () => {
