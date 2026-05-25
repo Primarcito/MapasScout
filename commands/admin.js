@@ -4,6 +4,7 @@ const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel, crearPanelRevision } = require('../utils/panel');
+const { forceScoutVerification } = require('../utils/verification');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -16,6 +17,15 @@ module.exports = {
     .addSubcommand(subcmd => 
       subcmd.setName("log")
         .setDescription("Ver el log de cambios administrativos de hoy")
+    )
+    .addSubcommand(subcmd =>
+      subcmd.setName("verificar")
+        .setDescription("Mandar verificacion con captura a un scout activo")
+        .addUserOption(option =>
+          option.setName("usuario")
+            .setDescription("Scout a verificar")
+            .setRequired(true)
+        )
     )
     .addSubcommand(subcmd => 
       subcmd.setName("reset_revision")
@@ -77,6 +87,31 @@ module.exports = {
         .setDescription(texto);
 
       return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    }
+
+    /* ===== VERIFICAR SCOUT ===== */
+    if (sub === "verificar") {
+      const usuario = interaction.options.getUser("usuario");
+      const result = await forceScoutVerification(usuario.id);
+
+      const mensajes = {
+        inactive: "Ese usuario no esta anotado en ningun mapa activo.",
+        pending: "Ese usuario ya tiene una verificacion pendiente.",
+        dm_unavailable: "No pude enviarle MD a ese usuario. Puede tener mensajes privados cerrados.",
+        send_failed: "No pude enviar la verificacion por MD.",
+      };
+
+      if (!result.ok) {
+        return interaction.reply({
+          content: mensajes[result.reason] || "No se pudo mandar la verificacion.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      return interaction.reply({
+        content: `Verificacion enviada a ${usuario}.`,
+        flags: MessageFlags.Ephemeral
+      });
     }
 
     /* ===== RESET REVISION ===== */

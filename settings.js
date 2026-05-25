@@ -61,7 +61,7 @@ const SETTINGS = {
   verification: {
     // Corta sesiones abiertas que nadie confirma, para evitar horas infinitas.
     enabled: process.env.SCOUT_VERIFICATION_ENABLED !== 'false',
-    maxActiveMinutes: Number(process.env.SCOUT_VERIFICATION_MAX_MINUTES || 120),
+    maxActiveMinutes: Number(process.env.SCOUT_VERIFICATION_MAX_MINUTES || 240),
     graceMinutes: Number(process.env.SCOUT_VERIFICATION_GRACE_MINUTES || 10),
     checkIntervalMinutes: Number(process.env.SCOUT_VERIFICATION_CHECK_MINUTES || 5),
   },

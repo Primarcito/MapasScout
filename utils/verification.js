@@ -22,7 +22,7 @@ function getVerificationConfig() {
   const raw = settings.verification || {};
   return {
     enabled: raw.enabled !== false,
-    maxActiveMinutes: numberOrDefault(raw.maxActiveMinutes, 120, 15),
+    maxActiveMinutes: numberOrDefault(raw.maxActiveMinutes, 240, 15),
     graceMinutes: numberOrDefault(raw.graceMinutes, 10, 1),
     checkIntervalMinutes: numberOrDefault(raw.checkIntervalMinutes, 5, 1),
   };
@@ -140,6 +140,17 @@ async function getNotificationChannel() {
   return fetchChannel(config.REVISION_CHANNEL_ID);
 }
 
+async function getUserDmChannel(userId) {
+  if (!state.client || !userId) return null;
+
+  try {
+    const user = await state.client.users.fetch(userId);
+    return await user.createDM();
+  } catch (err) {
+    return null;
+  }
+}
+
 async function getAdminReviewChannel() {
   return fetchChannel(config.SCOUT_VERIFICATION_ADMIN_CHANNEL_ID);
 }
@@ -195,12 +206,14 @@ function buildReviewEmbed(userId, pending, message, imageUrl) {
 }
 
 async function requestVerification(userId, entries, now, cfg) {
-  if (state.verificacionesScout[userId]) return;
+  if (state.verificacionesScout[userId]) {
+    return { ok: false, reason: 'pending' };
+  }
 
-  const channel = await getNotificationChannel();
+  const channel = await getUserDmChannel(userId);
   if (!channel) {
-    console.warn(`No se pudo solicitar verificacion para ${userId}: canal no disponible.`);
-    return;
+    console.warn(`No se pudo solicitar verificacion para ${userId}: MD no disponible.`);
+    return { ok: false, reason: 'dm_unavailable' };
   }
 
   const oldestStart = getOldestStart(entries);
@@ -211,7 +224,7 @@ async function requestVerification(userId, entries, now, cfg) {
     const msg = await channel.send({
       content:
         `<@${userId}> verificacion de scout: llevas **${formatMinutes(activeMinutes)}** activo en ${mapsSummary(entries)}.\n` +
-        `Pulsa **Sigo activo** y luego envia una foto/captura en este canal en **${cfg.graceMinutes}m**. ` +
+        `Pulsa **Sigo activo** y luego envia una foto/captura por este MD en **${cfg.graceMinutes}m**. ` +
         `Si no respondes o eliges salir, te retiro del panel.`,
       components: verificationButtons(userId),
       allowedMentions: { users: [userId] }
@@ -221,12 +234,25 @@ async function requestVerification(userId, entries, now, cfg) {
       status: 'waiting_response',
       messageId: msg.id,
       channelId: msg.channel.id,
+      isDm: !msg.guildId,
       createdAt: now,
       expiresAt,
     };
+    return { ok: true, message: msg };
   } catch (err) {
     console.error('Error enviando verificacion de scout:', err);
+    return { ok: false, reason: 'send_failed' };
   }
+}
+
+async function forceScoutVerification(userId) {
+  const entries = getActiveEntries(userId);
+  if (entries.length === 0) {
+    return { ok: false, reason: 'inactive' };
+  }
+
+  const cfg = getVerificationConfig();
+  return requestVerification(userId, entries, Date.now(), cfg);
 }
 
 async function closeScoutByVerification(userId, motivo, finOverride, options = {}) {
@@ -360,7 +386,7 @@ async function askForScoutEvidence(interaction, userId) {
 
   await interaction.message.edit({
     content:
-      `<@${userId}> envia ahora una **foto o captura de pantalla** en este canal para revisar que sigues activo.\n` +
+      `<@${userId}> envia ahora una **foto o captura de pantalla** por este MD para revisar que sigues activo.\n` +
       `Tienes hasta <t:${Math.floor(pending.expiresAt / 1000)}:R>. Si no envias la captura, te retiro del panel.`,
     components: awaitingEvidenceButtons(userId)
   });
@@ -409,11 +435,12 @@ async function sendScoutEvidenceToReview(message, userId, pending, image) {
 }
 
 async function handleScoutVerificationMessage(message) {
-  if (message.author.bot || !message.guild || message.guild.id !== config.GUILD_ID) return false;
+  if (message.author.bot) return false;
 
   const userId = message.author.id;
   const pending = state.verificacionesScout[userId];
   if (!pending || pending.status !== 'waiting_image') return false;
+  if (message.guild && message.guild.id !== config.GUILD_ID) return false;
 
   const now = Date.now();
   if (pending.expiresAt <= now) {
@@ -555,6 +582,7 @@ async function cancelScoutVerification(userId, content = 'Verificacion cancelada
 module.exports = {
   startScoutVerification,
   reviewActiveScouts,
+  forceScoutVerification,
   isVerificationButton,
   handleVerificationButton,
   handleScoutVerificationMessage,

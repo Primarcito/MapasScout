@@ -10,7 +10,7 @@ const { generarEmbedRevision } = require('./embeds/revisionEmbed');
 const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
 const { actualizarRevision, crearPanelRevision } = require('./utils/panel');
-const { startScoutVerification, handleScoutVerificationMessage } = require('./utils/verification');
+const { startScoutVerification, handleScoutVerificationMessage, isVerificationButton } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
 
@@ -45,6 +45,10 @@ const commands = getCommandsMap();
 /* ================= ROUTER DE INTERACCIONES ================= */
 
 client.on("interactionCreate", async interaction => {
+  if (interaction.isButton() && isVerificationButton(interaction.customId)) {
+    return handleButton(interaction);
+  }
+
   if (interaction.guildId !== config.GUILD_ID) return;
 
   if (interaction.isChatInputCommand()) {
@@ -63,6 +67,7 @@ client.on("messageCreate", async message => {
   if (message.author.bot) return;
 
   if (await handleScoutVerificationMessage(message)) return;
+  if (!message.guild) return;
 
   if (message.content.toLowerCase() !== "!revisar") return;
 
