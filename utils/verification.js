@@ -4,7 +4,7 @@ const config = require('../config');
 const settings = require('../settings');
 const { canReviewScoutVerification } = require('../permissions');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
-const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('./scouts');
+const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('./scouts');
 const { actualizarPanel } = require('./panel');
 const { verificarMapaVacio } = require('./alerts');
 
@@ -235,6 +235,7 @@ async function closeScoutByVerification(userId, motivo, finOverride, options = {
   const affectedMaps = getAffectedMaps(userId);
   const username = getScoutUsername(userId);
 
+  guardarUltimosMapas(userId);
   cerrarScoutsActivos(userId, username, motivo, finOverride);
   borrarRegistrosUsuario(userId);
   delete state.verificacionesScout[userId];
@@ -270,7 +271,6 @@ async function reviewActiveScouts() {
 
   const now = Date.now();
   const maxMs = cfg.maxActiveMinutes * 60000;
-  const graceMs = cfg.graceMinutes * 60000;
 
   for (const userId of Object.keys(state.verificacionesScout)) {
     const entries = getActiveEntries(userId);
@@ -295,13 +295,6 @@ async function reviewActiveScouts() {
     if (entries.length === 0 || state.verificacionesScout[userId]) continue;
 
     const oldestStart = getOldestStart(entries);
-
-    if (oldestStart + maxMs + graceMs <= now) {
-      await closeScoutByVerification(userId, 'verificacion_expirada', oldestStart + maxMs + graceMs, {
-        content: `<@${userId}> fue retirado de mapas por exceder el tiempo sin verificacion.`
-      });
-      continue;
-    }
 
     if (oldestStart + maxMs <= now) {
       await requestVerification(userId, entries, now, cfg);
