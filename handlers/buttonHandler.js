@@ -10,6 +10,7 @@ const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = req
 const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { verificarMapaVacio } = require('../utils/alerts');
 const { isVerificationButton, handleVerificationButton, cancelScoutVerification } = require('../utils/verification');
+const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
 
 module.exports = async function handleButton(interaction) {
 
@@ -77,6 +78,11 @@ module.exports = async function handleButton(interaction) {
       guardarScouts();
       await actualizarPanel();
       await verificarMapaVacio(ciudad, mapa);
+      await sendScoutLog('RETIRADO', [
+        `Scout: ${formatUser(userId, interaction.user.username)}`,
+        `Mapas: ${formatMaps([{ ciudad, mapa }])}`,
+        `Motivo: salida manual`
+      ]);
 
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `❌ Saliste de **${mapa}**\n\n` + resp.content;
@@ -96,6 +102,11 @@ module.exports = async function handleButton(interaction) {
       guardarScouts();
       await actualizarPanel();
       await verificarMapaVacio(ciudad, mapa);
+      await sendScoutLog('ANOTADO', [
+        `Scout: ${formatUser(userId, interaction.user.username)}`,
+        `Mapas: ${formatMaps([{ ciudad, mapa }])}`,
+        `Origen: boton Anotarse`
+      ]);
 
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `✅ Listo causa, ya estás en **${mapa}**\n\n` + resp.content;
@@ -143,6 +154,12 @@ module.exports = async function handleButton(interaction) {
       await verificarMapaVacio(ciudad, mapa);
     }
 
+    await sendScoutLog('RETIRADO', [
+      `Scout: ${formatUser(userId, interaction.user.username)}`,
+      `Mapas: ${formatMaps(mapasDropeados)}`,
+      `Motivo: dropear mapas`
+    ]);
+
     const msg = tieneMaps
       ? "🔴 Te borraste de todo pata.\nUsá **VOLVER A MIS MAPAS** en el panel para volver."
       : "🔴 Te borraste de todo pata.";
@@ -162,6 +179,7 @@ module.exports = async function handleButton(interaction) {
     }
 
     const anotados = [];
+    const mapasAnotados = [];
     const saltados = [];
 
     for (const { ciudad, mapa } of lista) {
@@ -186,6 +204,7 @@ module.exports = async function handleButton(interaction) {
       state.scoutsActivos[userId].push({ ciudad, mapa, inicio: Date.now() });
 
       anotados.push(`${ciudad} - ${mapa}`);
+      mapasAnotados.push({ ciudad, mapa });
     }
 
     delete state.ultimosMapas[userId];
@@ -193,6 +212,13 @@ module.exports = async function handleButton(interaction) {
     guardarDatos();
     guardarScouts();
     await actualizarPanel();
+    if (mapasAnotados.length > 0) {
+      await sendScoutLog('ANOTADO', [
+        `Scout: ${formatUser(userId, interaction.user.username)}`,
+        `Mapas: ${formatMaps(mapasAnotados)}`,
+        `Origen: volver a mis mapas`
+      ]);
+    }
 
     let respuesta = "";
     if (anotados.length > 0) respuesta += `✅ Ahí estás de vuelta hermano:\n${anotados.map(m => `• ${m}`).join("\n")}`;

@@ -1,16 +1,13 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const state = require('../data/state');
-const config = require('../config');
 const settings = require('../settings');
-const { canReviewScoutVerification } = require('../permissions');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
 const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('./scouts');
 const { actualizarPanel } = require('./panel');
 const { verificarMapaVacio } = require('./alerts');
+const { sendScoutLog, formatMaps, formatUser } = require('./scoutLogs');
 
 let intervalId = null;
-
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 
 function numberOrDefault(value, fallback, min = 1) {
   const parsed = Number(value);
@@ -71,9 +68,7 @@ function getAffectedMaps(userId) {
 }
 
 function mapsSummary(entries) {
-  const names = entries.map(entry => `${entry.ciudad} - ${entry.mapa}`);
-  if (names.length <= 4) return names.join(', ');
-  return `${names.slice(0, 4).join(', ')} y ${names.length - 4} mas`;
+  return formatMaps(entries);
 }
 
 function getScoutUsername(userId, fallback = null) {
@@ -96,50 +91,6 @@ function verificationButtons(userId) {
   ];
 }
 
-function awaitingEvidenceButtons(userId) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`verificacion_salir_${userId}`)
-        .setLabel('Salir de mapas')
-        .setStyle(ButtonStyle.Danger)
-    )
-  ];
-}
-
-function reviewButtons(userId) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`verificacion_aprobar_${userId}`)
-        .setLabel('Aprobar')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`verificacion_retirar_${userId}`)
-        .setLabel('Retirar del mapa')
-        .setStyle(ButtonStyle.Danger)
-    )
-  ];
-}
-
-async function fetchChannel(channelId) {
-  if (!state.client || !channelId) return null;
-  try {
-    return await state.client.channels.fetch(channelId);
-  } catch (err) {
-    return null;
-  }
-}
-
-async function getNotificationChannel() {
-  if (state.panelMessage?.channel) return state.panelMessage.channel;
-
-  const panelChannel = await fetchChannel(state.panelChannelId);
-  if (panelChannel) return panelChannel;
-
-  return fetchChannel(config.REVISION_CHANNEL_ID);
-}
-
 async function getUserDmChannel(userId) {
   if (!state.client || !userId) return null;
 
@@ -151,61 +102,19 @@ async function getUserDmChannel(userId) {
   }
 }
 
-async function getAdminReviewChannel() {
-  return fetchChannel(config.SCOUT_VERIFICATION_ADMIN_CHANNEL_ID);
-}
+async function editVerificationMessage(pending, content, components = []) {
+  if (!pending || !state.client) return;
 
-async function editMessage(channelId, messageId, payload) {
   try {
-    const channel = await fetchChannel(channelId);
-    const message = await channel?.messages.fetch(messageId);
-    if (!message) return;
-    await message.edit(payload);
+    const channel = await state.client.channels.fetch(pending.channelId);
+    const message = await channel?.messages.fetch(pending.messageId);
+    await message?.edit({ content, components });
   } catch (err) {
-    // El mensaje pudo haber sido borrado manualmente.
+    // El MD o mensaje pudo haber sido borrado.
   }
 }
 
-async function editVerificationMessage(pending, content, components = []) {
-  if (!pending) return;
-  await editMessage(pending.channelId, pending.messageId, { content, components });
-}
-
-async function editReviewMessage(pending, content) {
-  if (!pending?.reviewChannelId || !pending?.reviewMessageId) return;
-  await editMessage(pending.reviewChannelId, pending.reviewMessageId, { content, components: [] });
-}
-
-function getImageAttachment(message) {
-  return message.attachments.find(attachment => {
-    const contentType = attachment.contentType || '';
-    const filename = (attachment.name || attachment.filename || '').toLowerCase();
-    if (contentType === 'image/gif' || filename.endsWith('.gif')) return false;
-    return contentType.startsWith('image/') || IMAGE_EXTENSIONS.some(ext => filename.endsWith(ext));
-  });
-}
-
-function buildReviewEmbed(userId, pending, message, imageUrl) {
-  const entries = getActiveEntries(userId);
-  const activeSince = entries.length > 0 ? getOldestStart(entries) : pending.createdAt;
-  const activeMinutes = Math.max(0, Math.floor((Date.now() - activeSince) / 60000));
-  const submittedAt = Math.floor(message.createdTimestamp / 1000);
-
-  return new EmbedBuilder()
-    .setTitle('Verificacion de scout pendiente')
-    .setColor(0xfee75c)
-    .setDescription(
-      `Scout: <@${userId}>\n` +
-      `Tiempo activo: **${formatMinutes(activeMinutes)}**\n` +
-      `Mapas: **${mapsSummary(entries)}**\n` +
-      `Captura enviada: <t:${submittedAt}:R>\n` +
-      `[Abrir mensaje original](${message.url})`
-    )
-    .setImage(imageUrl)
-    .setFooter({ text: `User ID: ${userId}` });
-}
-
-async function requestVerification(userId, entries, now, cfg) {
+async function requestVerification(userId, entries, now, cfg, options = {}) {
   if (state.verificacionesScout[userId]) {
     return { ok: false, reason: 'pending' };
   }
@@ -224,8 +133,7 @@ async function requestVerification(userId, entries, now, cfg) {
     const msg = await channel.send({
       content:
         `<@${userId}> verificacion de scout: llevas **${formatMinutes(activeMinutes)}** activo en ${mapsSummary(entries)}.\n` +
-        `Pulsa **Sigo activo** y luego envia una foto/captura por este MD en **${cfg.graceMinutes}m**. ` +
-        `Si no respondes o eliges salir, te retiro del panel.`,
+        `Pulsa **Sigo activo** en **${cfg.graceMinutes}m** para seguir o **Salir de mapas** para retirarte.`,
       components: verificationButtons(userId),
       allowedMentions: { users: [userId] }
     });
@@ -234,10 +142,18 @@ async function requestVerification(userId, entries, now, cfg) {
       status: 'waiting_response',
       messageId: msg.id,
       channelId: msg.channel.id,
-      isDm: !msg.guildId,
+      isDm: true,
       createdAt: now,
       expiresAt,
     };
+
+    await sendScoutLog('VERIFICACION_ENVIADA', [
+      `Scout: ${formatUser(userId, getScoutUsername(userId))}`,
+      `Mapas: ${formatMaps(entries)}`,
+      `Tiempo activo: ${formatMinutes(activeMinutes)}`,
+      `Origen: ${options.requestedBy ? `manual por <@${options.requestedBy}>` : 'automatico'}`
+    ]);
+
     return { ok: true, message: msg };
   } catch (err) {
     console.error('Error enviando verificacion de scout:', err);
@@ -245,14 +161,14 @@ async function requestVerification(userId, entries, now, cfg) {
   }
 }
 
-async function forceScoutVerification(userId) {
+async function forceScoutVerification(userId, requestedBy = null) {
   const entries = getActiveEntries(userId);
   if (entries.length === 0) {
     return { ok: false, reason: 'inactive' };
   }
 
   const cfg = getVerificationConfig();
-  return requestVerification(userId, entries, Date.now(), cfg);
+  return requestVerification(userId, entries, Date.now(), cfg, { requestedBy });
 }
 
 async function closeScoutByVerification(userId, motivo, finOverride, options = {}) {
@@ -274,20 +190,15 @@ async function closeScoutByVerification(userId, motivo, finOverride, options = {
     await verificarMapaVacio(ciudad, mapa);
   }
 
-  if (!options.skipMessageEdit) {
-    const content = options.content || `<@${userId}> fue retirado de mapas por no completar la verificacion.`;
-    if (pending) {
-      await editVerificationMessage(pending, content);
-    } else {
-      const channel = await getNotificationChannel();
-      if (channel) {
-        try {
-          await channel.send({ content, allowedMentions: { users: [userId] } });
-        } catch (err) {
-          console.error('Error notificando cierre por verificacion:', err);
-        }
-      }
-    }
+  await sendScoutLog('RETIRADO', [
+    `Scout: ${formatUser(userId, username)}`,
+    `Mapas: ${formatMaps(affectedMaps)}`,
+    `Motivo: ${motivo}`
+  ]);
+
+  if (!options.skipMessageEdit && pending) {
+    const content = options.content || `<@${userId}> fuiste retirado de mapas por no completar la verificacion.`;
+    await editVerificationMessage(pending, content);
   }
 }
 
@@ -307,11 +218,9 @@ async function reviewActiveScouts() {
       continue;
     }
 
-    if (pending.status === 'pending_review') continue;
-
     if (pending.expiresAt <= now) {
       await closeScoutByVerification(userId, 'verificacion_expirada', pending.expiresAt, {
-        content: `<@${userId}> fue retirado de mapas por no responder con captura a tiempo.`
+        content: `<@${userId}> fuiste retirado de mapas por no responder la verificacion a tiempo.`
       });
     }
   }
@@ -351,10 +260,10 @@ function startScoutVerification() {
 }
 
 function isVerificationButton(customId) {
-  return /^verificacion_(confirmar|salir|aprobar|retirar)_\d+$/.test(customId);
+  return /^verificacion_(confirmar|salir)_\d+$/.test(customId);
 }
 
-async function askForScoutEvidence(interaction, userId) {
+async function confirmScoutVerification(interaction, userId) {
   const entries = getActiveEntries(userId);
   const pending = state.verificacionesScout[userId];
 
@@ -381,154 +290,36 @@ async function askForScoutEvidence(interaction, userId) {
     return;
   }
 
-  pending.status = 'waiting_image';
-  pending.acknowledgedAt = now;
-
-  await interaction.message.edit({
-    content:
-      `<@${userId}> envia ahora una **foto o captura de pantalla** por este MD para revisar que sigues activo.\n` +
-      `Tienes hasta <t:${Math.floor(pending.expiresAt / 1000)}:R>. Si no envias la captura, te retiro del panel.`,
-    components: awaitingEvidenceButtons(userId)
-  });
-}
-
-async function sendScoutEvidenceToReview(message, userId, pending, image) {
-  const reviewChannel = await getAdminReviewChannel();
-  if (!reviewChannel) {
-    await message.reply('No pude encontrar el canal de administracion para revisar tu captura.');
-    return true;
-  }
-
-  const embed = buildReviewEmbed(userId, pending, message, image.url);
-  const reviewMsg = await reviewChannel.send({
-    content: `Revision de captura para <@${userId}>`,
-    embeds: [embed],
-    components: reviewButtons(userId),
-    allowedMentions: { users: [] }
-  });
-
-  pending.status = 'pending_review';
-  pending.evidenceMessageId = message.id;
-  pending.evidenceChannelId = message.channel.id;
-  pending.evidenceUrl = message.url;
-  pending.imageUrl = image.url;
-  pending.reviewMessageId = reviewMsg.id;
-  pending.reviewChannelId = reviewMsg.channel.id;
-  pending.submittedAt = message.createdTimestamp || Date.now();
-
-  try {
-    await message.react('⌛');
-  } catch (err) {}
-
-  await editVerificationMessage(
-    pending,
-    `<@${userId}> captura recibida y enviada a revision. Espera aprobacion del equipo.`,
-    []
-  );
-
-  await message.reply({
-    content: `Captura enviada a revision: ${reviewMsg.url}`,
-    allowedMentions: { repliedUser: false }
-  });
-
-  return true;
-}
-
-async function handleScoutVerificationMessage(message) {
-  if (message.author.bot) return false;
-
-  const userId = message.author.id;
-  const pending = state.verificacionesScout[userId];
-  if (!pending || pending.status !== 'waiting_image') return false;
-  if (message.guild && message.guild.id !== config.GUILD_ID) return false;
-
-  const now = Date.now();
-  if (pending.expiresAt <= now) {
-    await closeScoutByVerification(userId, 'verificacion_expirada', pending.expiresAt, {
-      content: `<@${userId}> fue retirado de mapas por enviar la captura fuera de tiempo.`
-    });
-    return true;
-  }
-
-  const image = getImageAttachment(message);
-  if (!image) {
-    await message.reply({
-      content: 'Necesito una imagen como adjunto: PNG, JPG, JPEG o WEBP.',
-      allowedMentions: { repliedUser: false }
-    });
-    return true;
-  }
-
-  return sendScoutEvidenceToReview(message, userId, pending, image);
-}
-
-async function approveScoutVerification(interaction, userId) {
-  if (!canReviewScoutVerification(interaction.member)) {
-    await interaction.reply({ content: 'No tienes permiso para revisar capturas.', flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  const pending = state.verificacionesScout[userId];
-  const entries = getActiveEntries(userId);
-  if (!pending || pending.status !== 'pending_review' || pending.reviewMessageId !== interaction.message.id || entries.length === 0) {
-    await interaction.reply({ content: 'Esta verificacion ya fue resuelta o no esta vigente.', flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  await interaction.deferUpdate();
-
-  const approvedAt = pending.submittedAt || Date.now();
+  const username = interaction.user.username || getScoutUsername(userId);
   const nextEntries = entries.map(entry => ({
     ...entry,
-    inicio: approvedAt,
-    username: getScoutUsername(userId),
+    inicio: now,
+    username,
   }));
 
-  cerrarScoutsActivos(userId, getScoutUsername(userId), 'verificacion_aprobada', approvedAt);
+  cerrarScoutsActivos(userId, username, 'verificacion_confirmada', now);
   state.scoutsActivos[userId] = nextEntries;
   delete state.verificacionesScout[userId];
 
   guardarScouts();
   await actualizarPanel();
-  await editVerificationMessage(pending, `<@${userId}> captura aprobada. Sigues activo en tus mapas.`, []);
 
-  const embed = EmbedBuilder.from(interaction.message.embeds[0])
-    .setColor(0x57f287)
-    .addFields({ name: 'Estado', value: `Aprobado por ${interaction.user}`, inline: false });
+  await sendScoutLog('VERIFICADO', [
+    `Scout: ${formatUser(userId, username)}`,
+    `Mapas: ${formatMaps(entries)}`,
+    `Resultado: siguio activo`
+  ]);
 
-  await interaction.message.edit({ embeds: [embed], components: [] });
-}
-
-async function rejectScoutVerification(interaction, userId) {
-  if (!canReviewScoutVerification(interaction.member)) {
-    await interaction.reply({ content: 'No tienes permiso para revisar capturas.', flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  const pending = state.verificacionesScout[userId];
-  if (!pending || pending.status !== 'pending_review' || pending.reviewMessageId !== interaction.message.id) {
-    await interaction.reply({ content: 'Esta verificacion ya fue resuelta o no esta vigente.', flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  await interaction.deferUpdate();
-
-  const fin = pending.submittedAt || Date.now();
-  await closeScoutByVerification(userId, 'verificacion_retirada', fin, {
-    content: `<@${userId}> fue retirado de mapas porque la captura no fue aprobada.`
+  await interaction.message.edit({
+    content: `<@${userId}> verificacion confirmada. Sigues activo en tus mapas.`,
+    components: []
   });
-
-  const embed = EmbedBuilder.from(interaction.message.embeds[0])
-    .setColor(0xed4245)
-    .addFields({ name: 'Estado', value: `Retirado por ${interaction.user}`, inline: false });
-
-  await interaction.message.edit({ embeds: [embed], components: [] });
 }
 
 async function leaveFromVerification(interaction, userId) {
   await interaction.deferUpdate();
   await interaction.message.edit({
-    content: `<@${userId}> salio de sus mapas desde la verificacion.`,
+    content: `<@${userId}> saliste de tus mapas desde la verificacion.`,
     components: []
   });
 
@@ -538,20 +329,10 @@ async function leaveFromVerification(interaction, userId) {
 }
 
 async function handleVerificationButton(interaction) {
-  const match = interaction.customId.match(/^verificacion_(confirmar|salir|aprobar|retirar)_(\d+)$/);
+  const match = interaction.customId.match(/^verificacion_(confirmar|salir)_(\d+)$/);
   if (!match) return false;
 
   const [, action, userId] = match;
-
-  if (action === 'aprobar') {
-    await approveScoutVerification(interaction, userId);
-    return true;
-  }
-
-  if (action === 'retirar') {
-    await rejectScoutVerification(interaction, userId);
-    return true;
-  }
 
   if (interaction.user.id !== userId) {
     await interaction.reply({
@@ -562,7 +343,7 @@ async function handleVerificationButton(interaction) {
   }
 
   if (action === 'confirmar') {
-    await askForScoutEvidence(interaction, userId);
+    await confirmScoutVerification(interaction, userId);
     return true;
   }
 
@@ -576,7 +357,6 @@ async function cancelScoutVerification(userId, content = 'Verificacion cancelada
 
   delete state.verificacionesScout[userId];
   await editVerificationMessage(pending, content);
-  await editReviewMessage(pending, `Verificacion cancelada para <@${userId}>.`);
 }
 
 module.exports = {
@@ -585,6 +365,5 @@ module.exports = {
   forceScoutVerification,
   isVerificationButton,
   handleVerificationButton,
-  handleScoutVerificationMessage,
   cancelScoutVerification,
 };

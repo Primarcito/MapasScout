@@ -1,9 +1,10 @@
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const state = require('../data/state');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
-const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
+const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel } = require('../utils/panel');
 const { cancelScoutVerification } = require('../utils/verification');
+const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
 
 module.exports = async function handleSelect(interaction) {
 
@@ -30,7 +31,16 @@ module.exports = async function handleSelect(interaction) {
 
   if (interaction.customId === "select_limpiar_scout") {
     const userId = interaction.values[0];
+    const mapasRemovidos = [];
+    for (const ciudad in state.registros) {
+      for (const mapa in state.registros[ciudad]) {
+        if (state.registros[ciudad][mapa].includes(userId)) {
+          mapasRemovidos.push({ ciudad, mapa });
+        }
+      }
+    }
 
+    guardarUltimosMapas(userId);
     cerrarScoutsActivos(userId);
     await cancelScoutVerification(userId, "Verificacion cancelada: el scout fue removido por admin.");
     borrarRegistrosUsuario(userId);
@@ -38,6 +48,11 @@ module.exports = async function handleSelect(interaction) {
     guardarDatos();
     guardarScouts();
     await actualizarPanel();
+    await sendScoutLog('RETIRADO', [
+      `Scout: ${formatUser(userId)}`,
+      `Mapas: ${formatMaps(mapasRemovidos)}`,
+      `Motivo: removido por admin ${interaction.user}`
+    ]);
 
     return interaction.update({
       content: `✅ Scout <@${userId}> removido correctamente.`,

@@ -21,11 +21,10 @@ module.exports = {
   SCOUT_ROLE_MENTIONS: mentionRoles(ROLE_IDS.scout),
   ADMIN_ROLE_IDS: ROLE_IDS.admin,
   LIDER_ROLE_IDS: ROLE_IDS.lider,
-  SCOUT_VERIFIER_ROLE_IDS: ROLE_IDS.scoutVerifier,
 
   REVISION_CHANNEL_ID: settings.channels.revision,
   ARCHIVE_CHANNEL_ID: settings.channels.archive,
-  SCOUT_VERIFICATION_ADMIN_CHANNEL_ID: settings.channels.scoutVerificationAdmin,
+  SCOUT_LOG_CHANNEL_ID: settings.channels.scoutLog,
 
   DATA_DIR: settings.files.dataDir,
   DATA_FILE: settings.files.data,

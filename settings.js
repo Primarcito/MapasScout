@@ -24,11 +24,6 @@ const SETTINGS = {
       // 'OTRO_ROL_ID',
     ],
 
-    // Puede aprobar o retirar verificaciones de captura de scouts.
-    scoutVerifier: [
-      '1505949443529375845',
-      '1435778823743340652',
-    ],
   },
 
   channels: {
@@ -38,8 +33,8 @@ const SETTINGS = {
     // Canal donde se archiva el resumen diario.
     archive: '1505984531063377970',
 
-    // Canal donde los admins revisan capturas de scouts activos.
-    scoutVerificationAdmin: '1508497419132993626',
+    // Canal donde se registran entradas, salidas y verificaciones de scouts.
+    scoutLog: '1508505812018921632',
   },
 
   files: {

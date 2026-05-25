@@ -20,7 +20,7 @@ module.exports = {
     )
     .addSubcommand(subcmd =>
       subcmd.setName("verificar")
-        .setDescription("Mandar verificacion con captura a un scout activo")
+        .setDescription("Mandar verificacion por MD a un scout activo")
         .addUserOption(option =>
           option.setName("usuario")
             .setDescription("Scout a verificar")
@@ -92,7 +92,7 @@ module.exports = {
     /* ===== VERIFICAR SCOUT ===== */
     if (sub === "verificar") {
       const usuario = interaction.options.getUser("usuario");
-      const result = await forceScoutVerification(usuario.id);
+      const result = await forceScoutVerification(usuario.id, interaction.user.id);
 
       const mensajes = {
         inactive: "Ese usuario no esta anotado en ningun mapa activo.",

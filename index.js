@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const config = require('./config');
 const state = require('./data/state');
 const { cargarDatos, cargarScouts, cargarPanel, cargarRevisionPanel, guardarPanel } = require('./data/persistence');
@@ -10,7 +10,7 @@ const { generarEmbedRevision } = require('./embeds/revisionEmbed');
 const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
 const { actualizarRevision, crearPanelRevision } = require('./utils/panel');
-const { startScoutVerification, handleScoutVerificationMessage, isVerificationButton } = require('./utils/verification');
+const { startScoutVerification, isVerificationButton } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
 
@@ -28,8 +28,10 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent
-  ]
+  ],
+  partials: [Partials.Channel]
 });
 
 state.client = client;
@@ -65,8 +67,6 @@ client.on("interactionCreate", async interaction => {
 
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
-
-  if (await handleScoutVerificationMessage(message)) return;
   if (!message.guild) return;
 
   if (message.content.toLowerCase() !== "!revisar") return;
