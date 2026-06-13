@@ -1,6 +1,6 @@
 const state = require('../data/state');
 const config = require('../config');
-const { generarEmbed } = require('../embeds/panelEmbed');
+const { generarEmbeds } = require('../embeds/panelEmbed');
 const { generarEmbedRevision } = require('../embeds/revisionEmbed');
 const { componentesPanel } = require('../components/panelComponents');
 const { componentesRevision } = require('../components/revisionComponents');
@@ -11,7 +11,7 @@ async function actualizarPanel() {
 
   try {
     await state.panelMessage.edit({
-      embeds: [generarEmbed()],
+      embeds: generarEmbeds(),
       components: componentesPanel()
     });
   } catch (err) {

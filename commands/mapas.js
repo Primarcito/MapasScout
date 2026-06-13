@@ -3,7 +3,7 @@ const state = require('../data/state');
 const config = require('../config');
 const { canManageMaps } = require('../permissions');
 const { guardarPanel, guardarDatos, guardarScouts } = require('../data/persistence');
-const { generarEmbed } = require('../embeds/panelEmbed');
+const { generarEmbeds } = require('../embeds/panelEmbed');
 const { componentesPanel } = require('../components/panelComponents');
 const { actualizarPanel } = require('../utils/panel');
 const { cerrarScoutsActivos } = require('../utils/scouts');
@@ -43,7 +43,7 @@ module.exports = {
     /* ===== PANEL ===== */
     if (sub === "panel") {
       const panelReply = await interaction.reply({
-        embeds: [generarEmbed()],
+        embeds: generarEmbeds(),
         components: componentesPanel(),
         withResponse: true
       });
