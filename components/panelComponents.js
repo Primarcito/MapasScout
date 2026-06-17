@@ -89,7 +89,7 @@ function respuestaMapas(ciudad, userId) {
 
     fila.addComponents(
       new ButtonBuilder()
-        .setCustomId(`registro_btn_${ciudad}__${mapa}`)
+        .setCustomId(`registro_idx_${ciudad}__${i}`)
         .setLabel(label)
         .setStyle(style)
         .setDisabled(disabled)

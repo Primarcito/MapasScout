@@ -41,12 +41,16 @@ function componentesRevisionCiudades() {
   return filas;
 }
 
+function revisionCustomId(ciudad, index) {
+  return `revision_idx_${ciudad}__${index}`;
+}
+
 function componentesRevisionMapas(ciudad) {
   const filas = [];
   let fila = new ActionRowBuilder();
   let count = 0;
 
-  (state.mapas[ciudad] || []).forEach(mapa => {
+  (state.mapas[ciudad] || []).forEach((mapa, index) => {
     if (count % 5 === 0 && count !== 0) {
       filas.push(fila);
       fila = new ActionRowBuilder();
@@ -61,7 +65,7 @@ function componentesRevisionMapas(ciudad) {
 
     fila.addComponents(
       new ButtonBuilder()
-        .setCustomId(`revision_btn_${key}`)
+        .setCustomId(revisionCustomId(ciudad, index))
         .setLabel(label)
         .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
@@ -98,7 +102,7 @@ function componentesRevision(ciudad = null) {
 
   for (const c in state.mapas) {
     if (!state.mapas[c] || state.mapas[c].length === 0) continue;
-    state.mapas[c].forEach(mapa => {
+    state.mapas[c].forEach((mapa, index) => {
       if (count % 5 === 0 && count !== 0) {
         filas.push(fila);
         fila = new ActionRowBuilder();
@@ -113,7 +117,7 @@ function componentesRevision(ciudad = null) {
 
       fila.addComponents(
         new ButtonBuilder()
-          .setCustomId(`revision_btn_${key}`)
+          .setCustomId(revisionCustomId(c, index))
           .setLabel(label)
           .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
       );

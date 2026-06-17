@@ -39,13 +39,25 @@ module.exports = async function handleButton(interaction) {
 
   /* ===== REGISTRO MAPA ===== */
 
-  if (interaction.customId.startsWith("registro_btn_")) {
-    const partes = interaction.customId.replace("registro_btn_", "").split("__");
+  if (interaction.customId.startsWith("registro_idx_") || interaction.customId.startsWith("registro_btn_")) {
+    const isIndexedButton = interaction.customId.startsWith("registro_idx_");
+    const partes = interaction.customId
+      .replace(isIndexedButton ? "registro_idx_" : "registro_btn_", "")
+      .split("__");
     const ciudad = partes[0];
-    const mapa = partes[1];
+    const mapa = isIndexedButton
+      ? state.mapas[ciudad]?.[Number(partes[1])]
+      : partes[1];
     const userId = interaction.user.id;
 
     await interaction.deferUpdate();
+
+    if (!mapa) {
+      return interaction.editReply({
+        content: "Ese mapa ya no existe o fue editado. Vuelve a abrir Anotarse desde el panel.",
+        components: []
+      });
+    }
 
     if (!state.registros[ciudad]) state.registros[ciudad] = {};
     if (!state.registros[ciudad][mapa]) state.registros[ciudad][mapa] = [];
@@ -251,14 +263,25 @@ module.exports = async function handleButton(interaction) {
 
   /* ===== REVISIÓN MAPA ===== */
 
-  if (interaction.customId.startsWith("revision_btn_")) {
-    const key = interaction.customId.replace("revision_btn_", "");
+  if (interaction.customId.startsWith("revision_idx_") || interaction.customId.startsWith("revision_btn_")) {
+    const isIndexedRevision = interaction.customId.startsWith("revision_idx_");
+    const rawKey = interaction.customId
+      .replace(isIndexedRevision ? "revision_idx_" : "revision_btn_", "");
     const userId = interaction.user.id;
     const ahora = Date.now();
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const [ciudad, mapa] = key.split("__");
+    const [ciudad, mapaRef] = rawKey.split("__");
+    const mapa = isIndexedRevision
+      ? state.mapas[ciudad]?.[Number(mapaRef)]
+      : mapaRef;
+
+    if (!mapa) {
+      return interaction.editReply({ content: "Ese mapa ya no existe o fue editado. Vuelve a abrir el panel de revision." });
+    }
+
+    const key = `${ciudad}__${mapa}`;
 
     // Verificar rol Scout
     if (!canScout(interaction.member)) {
