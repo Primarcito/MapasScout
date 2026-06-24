@@ -9,7 +9,7 @@ const handleModal = require('./handlers/modalHandler');
 const { generarEmbedRevision } = require('./embeds/revisionEmbed');
 const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
-const { actualizarRevision, crearPanelRevision } = require('./utils/panel');
+const { actualizarPanel, actualizarRevision, crearPanelRevision } = require('./utils/panel');
 const { startScoutVerification, isVerificationButton } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
@@ -110,14 +110,23 @@ client.once("clientReady", async () => {
       const channel = await client.channels.fetch(state.panelChannelId);
       state.panelMessage = await channel.messages.fetch(state.panelMessageId);
       console.log("Panel recuperado correctamente");
+    } else if (state.panelChannelId) {
+      await actualizarPanel();
     }
   } catch (err) {
-    console.log("No se pudo recuperar el panel:", err.message);
-    state.panelChannelId = null;
-    state.panelMessageId = null;
-    state.panelMessage = null;
-    guardarPanel();
-    console.log("Panel.json limpiado, usar /panel_mapas para recrear.");
+    if (err?.code === 10008 && state.panelChannelId) {
+      console.log("Panel guardado no encontrado, recreando en el mismo canal...");
+      state.panelMessage = null;
+      state.panelMessageId = null;
+      await actualizarPanel();
+    } else {
+      console.log("No se pudo recuperar el panel:", err.message);
+      state.panelChannelId = null;
+      state.panelMessageId = null;
+      state.panelMessage = null;
+      guardarPanel();
+      console.log("Panel.json limpiado, usar /mapas panel para recrear.");
+    }
   }
 
   // Recuperar o crear panel de revisión
