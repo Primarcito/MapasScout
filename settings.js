@@ -24,6 +24,12 @@ const SETTINGS = {
       // 'OTRO_ROL_ID',
     ],
 
+    // Puede aprobar/rechazar capturas de verificacion al instante.
+    verificationOfficer: [
+      '1435778823743340652',
+      // 'OTRO_ROL_ID',
+    ],
+
   },
 
   channels: {

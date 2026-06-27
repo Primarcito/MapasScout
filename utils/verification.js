@@ -6,7 +6,7 @@ const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = req
 const { actualizarPanel } = require('./panel');
 const { verificarMapaVacio } = require('./alerts');
 const { sendScoutLog, formatMaps, formatUser } = require('./scoutLogs');
-const { canScout, canUseAdmin } = require('../permissions');
+const { canScout, canDecideVerification } = require('../permissions');
 
 let intervalId = null;
 
@@ -84,6 +84,15 @@ function getAffectedMaps(userId) {
 
 function mapsSummary(entries) {
   return formatMaps(entries);
+}
+
+function shortMapsSummary(entries, limit = 3) {
+  if (!entries || entries.length === 0) return 'sin mapas';
+  const visibles = entries
+    .slice(0, limit)
+    .map(entry => `${entry.ciudad} - ${entry.mapa}`);
+  const extra = entries.length - visibles.length;
+  return extra > 0 ? `${visibles.join(', ')} +${extra} mas` : visibles.join(', ');
 }
 
 function getScoutUsername(userId, fallback = null) {
@@ -184,10 +193,10 @@ function buildEvidenceReviewContent(userId, entries, votes, cfg, status = null, 
   const lines = [
     `**Verificacion de scout**`,
     `Scout: ${formatUser(userId, username || getScoutUsername(userId))}`,
-    `Mapas: ${formatMaps(entries)}`,
-    `Hora Discord: <t:${Math.floor(Date.now() / 1000)}:F>`,
-    `Votos scout: ✅ ${approve}/${cfg.scoutReviewVotes} | ❌ ${reject}/${cfg.scoutReviewVotes}`,
-    `GM/Officer: un voto decide al instante.`,
+    `Mapas: ${shortMapsSummary(entries)}`,
+    `Hora: <t:${Math.floor(Date.now() / 1000)}:t>`,
+    `Votos: ✅ ${approve}/${cfg.scoutReviewVotes} | ❌ ${reject}/${cfg.scoutReviewVotes}`,
+    `GM/Officer decide al instante.`,
   ];
   if (status) lines.push(`Estado: **${status}**`);
   return lines.join('\n');
@@ -554,14 +563,6 @@ async function handleEvidenceReviewButton(interaction, action, userId) {
     return true;
   }
 
-  if (interaction.user.id === userId) {
-    await interaction.reply({
-      content: 'No puedes validar tu propia captura.',
-      flags: MessageFlags.Ephemeral
-    });
-    return true;
-  }
-
   if (entries.length === 0) {
     delete state.verificacionesScout[userId];
     await interaction.update({
@@ -571,8 +572,16 @@ async function handleEvidenceReviewButton(interaction, action, userId) {
     return true;
   }
 
-  const isOfficer = canUseAdmin(interaction.member);
+  const isOfficer = canDecideVerification(interaction.member);
   const isScout = canScout(interaction.member);
+  if (interaction.user.id === userId && !isOfficer) {
+    await interaction.reply({
+      content: 'No puedes validar tu propia captura.',
+      flags: MessageFlags.Ephemeral
+    });
+    return true;
+  }
+
   if (!isOfficer && !isScout) {
     await interaction.reply({
       content: 'Necesitas rol Scout o GM/Officer para revisar esta captura.',

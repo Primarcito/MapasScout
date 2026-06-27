@@ -28,6 +28,10 @@ function canExport(member) {
   return hasRole(member, ROLE_IDS.lider);
 }
 
+function canDecideVerification(member) {
+  return hasRole(member, ROLE_IDS.verificationOfficer);
+}
+
 module.exports = {
   SERVER_IDS,
   ROLE_IDS,
@@ -37,4 +41,5 @@ module.exports = {
   canUseAdmin,
   canReview,
   canExport,
+  canDecideVerification,
 };
