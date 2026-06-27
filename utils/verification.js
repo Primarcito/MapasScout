@@ -196,7 +196,7 @@ function buildEvidenceReviewContent(userId, entries, votes, cfg, status = null, 
     `Mapas: ${shortMapsSummary(entries)}`,
     `Hora: <t:${Math.floor(Date.now() / 1000)}:t>`,
     `Votos: ✅ ${approve}/${cfg.scoutReviewVotes} | ❌ ${reject}/${cfg.scoutReviewVotes}`,
-    `GM/Officer decide al instante.`,
+    `Scouts: ${cfg.scoutReviewVotes} votos. GM/Officer: 1 voto.`,
   ];
   if (status) lines.push(`Estado: **${status}**`);
   return lines.join('\n');
