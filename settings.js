@@ -63,6 +63,7 @@ const SETTINGS = {
     maxActiveMinutes: Number(process.env.SCOUT_VERIFICATION_MAX_MINUTES || 240),
     graceMinutes: Number(process.env.SCOUT_VERIFICATION_GRACE_MINUTES || 10),
     checkIntervalMinutes: Number(process.env.SCOUT_VERIFICATION_CHECK_MINUTES || 5),
+    scoutReviewVotes: Number(process.env.SCOUT_VERIFICATION_SCOUT_VOTES || 3),
   },
 };
 

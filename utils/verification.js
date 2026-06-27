@@ -6,6 +6,7 @@ const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = req
 const { actualizarPanel } = require('./panel');
 const { verificarMapaVacio } = require('./alerts');
 const { sendScoutLog, formatMaps, formatUser } = require('./scoutLogs');
+const { canScout, canUseAdmin } = require('../permissions');
 
 let intervalId = null;
 
@@ -31,6 +32,7 @@ function getVerificationConfig() {
     maxActiveMinutes: numberOrDefault(raw.maxActiveMinutes, 240, 15),
     graceMinutes: numberOrDefault(raw.graceMinutes, 10, 1),
     checkIntervalMinutes: numberOrDefault(raw.checkIntervalMinutes, 5, 1),
+    scoutReviewVotes: numberOrDefault(raw.scoutReviewVotes, 3, 1),
   };
 }
 
@@ -104,6 +106,23 @@ function verificationButtons(userId) {
   ];
 }
 
+function evidenceReviewButtons(userId, disabled = false) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`verificacion_evidencia_ok_${userId}`)
+        .setLabel('Bien')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(disabled),
+      new ButtonBuilder()
+        .setCustomId(`verificacion_evidencia_mal_${userId}`)
+        .setLabel('Mal')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(disabled)
+    )
+  ];
+}
+
 async function getUserDmChannel(userId) {
   if (!state.client || !userId) return null;
 
@@ -141,6 +160,7 @@ async function sendVerificationEvidence(userId, entries, attachments, message) {
 
   const channel = await state.client.channels.fetch(channelId).catch(() => null);
   if (!channel) return null;
+  const cfg = getVerificationConfig();
 
   const files = attachments.map((attachment, index) => ({
     attachment: attachment.url,
@@ -148,16 +168,29 @@ async function sendVerificationEvidence(userId, entries, attachments, message) {
   }));
 
   return channel.send({
-    content: [
-      `**Verificacion de scout**`,
-      `Scout: ${formatUser(userId, message.author.username)}`,
-      `Mapas: ${formatMaps(entries)}`,
-      `Hora Discord: <t:${Math.floor(Date.now() / 1000)}:F>`,
-      `Origen: captura por MD`,
-    ].join('\n'),
+    content: buildEvidenceReviewContent(userId, entries, {
+      approve: [],
+      reject: [],
+    }, cfg, null, message.author.username),
     files,
+    components: evidenceReviewButtons(userId),
     allowedMentions: { users: [userId] },
   });
+}
+
+function buildEvidenceReviewContent(userId, entries, votes, cfg, status = null, username = null) {
+  const approve = votes?.approve?.length || 0;
+  const reject = votes?.reject?.length || 0;
+  const lines = [
+    `**Verificacion de scout**`,
+    `Scout: ${formatUser(userId, username || getScoutUsername(userId))}`,
+    `Mapas: ${formatMaps(entries)}`,
+    `Hora Discord: <t:${Math.floor(Date.now() / 1000)}:F>`,
+    `Votos scout: ✅ ${approve}/${cfg.scoutReviewVotes} | ❌ ${reject}/${cfg.scoutReviewVotes}`,
+    `GM/Officer: un voto decide al instante.`,
+  ];
+  if (status) lines.push(`Estado: **${status}**`);
+  return lines.join('\n');
 }
 
 async function requestVerification(userId, entries, now, cfg, options = {}) {
@@ -272,6 +305,10 @@ async function reviewActiveScouts() {
       continue;
     }
 
+    if (pending.status === 'waiting_review') {
+      continue;
+    }
+
     if (pending.expiresAt <= now) {
       await closeScoutByVerification(userId, 'verificacion_expirada', pending.expiresAt, {
         creditFrom: pending.creditFromOnExpire,
@@ -315,7 +352,8 @@ function startScoutVerification() {
 }
 
 function isVerificationButton(customId) {
-  return /^verificacion_(confirmar|salir)_\d+$/.test(customId);
+  return /^verificacion_(confirmar|salir)_\d+$/.test(customId)
+    || /^verificacion_evidencia_(ok|mal)_\d+$/.test(customId);
 }
 
 async function confirmScoutVerification(interaction, userId) {
@@ -436,15 +474,147 @@ async function handleVerificationScreenshotMessage(message) {
     return true;
   }
 
-  await completeScoutVerification(userId, message.author.username, entries, {
-    resultado: 'captura recibida',
-    evidenceUrl: evidenceMessage.url,
-  });
+  pending.status = 'waiting_review';
+  pending.reviewChannelId = evidenceMessage.channel.id;
+  pending.reviewMessageId = evidenceMessage.id;
+  pending.reviewVotes = { approve: [], reject: [] };
+  pending.evidenceUrl = evidenceMessage.url;
+
   await editVerificationMessage(
     pending,
-    `<@${userId}> verificacion confirmada con captura. Sigues activo en tus mapas.`
+    `<@${userId}> captura recibida. Espera la aprobacion de scouts o GM/officer.`
   );
-  await message.reply('Verificacion confirmada. Captura enviada y sigues activo en tus mapas.');
+  await sendScoutLog('VERIFICACION_CAPTURA', [
+    `Scout: ${formatUser(userId, message.author.username)}`,
+    `Mapas: ${formatMaps(entries)}`,
+    `Captura: ${evidenceMessage.url}`,
+    `Estado: pendiente de revision`
+  ]);
+  await message.reply('Captura enviada a revision. Espera aprobacion.');
+  return true;
+}
+
+function ensureReviewVotes(pending) {
+  if (!pending.reviewVotes) pending.reviewVotes = { approve: [], reject: [] };
+  if (!Array.isArray(pending.reviewVotes.approve)) pending.reviewVotes.approve = [];
+  if (!Array.isArray(pending.reviewVotes.reject)) pending.reviewVotes.reject = [];
+  return pending.reviewVotes;
+}
+
+async function finalizeEvidenceReview(interaction, userId, approved, entries, pending, decidedBy) {
+  const username = getScoutUsername(userId);
+  const cfg = getVerificationConfig();
+  const status = approved ? `Aprobada por ${decidedBy}` : `Rechazada por ${decidedBy}`;
+
+  if (approved) {
+    await completeScoutVerification(userId, username, entries, {
+      resultado: 'captura aprobada',
+      evidenceUrl: pending.evidenceUrl || interaction.message.url,
+    });
+    await editVerificationMessage(
+      pending,
+      `<@${userId}> verificacion aprobada. Sigues activo en tus mapas.`
+    );
+  } else {
+    await closeScoutByVerification(userId, 'verificacion_rechazada', Date.now(), {
+      creditFrom: pending.creditFromOnExpire,
+      content: `<@${userId}> tu captura fue rechazada y fuiste retirado de mapas.`
+    });
+  }
+
+  await interaction.message.edit({
+    content: buildEvidenceReviewContent(
+      userId,
+      entries,
+      ensureReviewVotes(pending),
+      cfg,
+      status,
+      username
+    ),
+    components: evidenceReviewButtons(userId, true),
+  });
+
+  await sendScoutLog(approved ? 'VERIFICACION_APROBADA' : 'VERIFICACION_RECHAZADA', [
+    `Scout: ${formatUser(userId, username)}`,
+    `Mapas: ${formatMaps(entries)}`,
+    `Decision: ${status}`,
+    pending.evidenceUrl ? `Captura: ${pending.evidenceUrl}` : null
+  ].filter(Boolean));
+}
+
+async function handleEvidenceReviewButton(interaction, action, userId) {
+  const pending = state.verificacionesScout[userId];
+  const entries = getActiveEntries(userId);
+
+  if (!pending || pending.status !== 'waiting_review') {
+    await interaction.reply({
+      content: 'Esta verificacion ya no esta pendiente.',
+      flags: MessageFlags.Ephemeral
+    });
+    return true;
+  }
+
+  if (interaction.user.id === userId) {
+    await interaction.reply({
+      content: 'No puedes validar tu propia captura.',
+      flags: MessageFlags.Ephemeral
+    });
+    return true;
+  }
+
+  if (entries.length === 0) {
+    delete state.verificacionesScout[userId];
+    await interaction.update({
+      content: 'Esta verificacion ya no esta activa porque el scout no esta en mapas.',
+      components: evidenceReviewButtons(userId, true)
+    });
+    return true;
+  }
+
+  const isOfficer = canUseAdmin(interaction.member);
+  const isScout = canScout(interaction.member);
+  if (!isOfficer && !isScout) {
+    await interaction.reply({
+      content: 'Necesitas rol Scout o GM/Officer para revisar esta captura.',
+      flags: MessageFlags.Ephemeral
+    });
+    return true;
+  }
+
+  const approved = action === 'ok';
+  const decidedBy = isOfficer ? `GM/Officer ${interaction.user}` : `${interaction.user}`;
+  const votes = ensureReviewVotes(pending);
+
+  if (isOfficer) {
+    await interaction.deferUpdate();
+    await finalizeEvidenceReview(interaction, userId, approved, entries, pending, decidedBy);
+    return true;
+  }
+
+  const voterId = interaction.user.id;
+  votes.approve = votes.approve.filter(id => id !== voterId);
+  votes.reject = votes.reject.filter(id => id !== voterId);
+  if (approved) votes.approve.push(voterId);
+  else votes.reject.push(voterId);
+
+  const cfg = getVerificationConfig();
+  if (votes.approve.length >= cfg.scoutReviewVotes || votes.reject.length >= cfg.scoutReviewVotes) {
+    await interaction.deferUpdate();
+    await finalizeEvidenceReview(
+      interaction,
+      userId,
+      votes.approve.length >= cfg.scoutReviewVotes,
+      entries,
+      pending,
+      `${cfg.scoutReviewVotes} scouts`
+    );
+    return true;
+  }
+
+  await interaction.update({
+    content: buildEvidenceReviewContent(userId, entries, votes, cfg, null, getScoutUsername(userId)),
+    components: evidenceReviewButtons(userId),
+  });
   return true;
 }
 
@@ -461,6 +631,12 @@ async function leaveFromVerification(interaction, userId) {
 }
 
 async function handleVerificationButton(interaction) {
+  const reviewMatch = interaction.customId.match(/^verificacion_evidencia_(ok|mal)_(\d+)$/);
+  if (reviewMatch) {
+    const [, action, userId] = reviewMatch;
+    return handleEvidenceReviewButton(interaction, action, userId);
+  }
+
   const match = interaction.customId.match(/^verificacion_(confirmar|salir)_(\d+)$/);
   if (!match) return false;
 
