@@ -10,7 +10,7 @@ const { generarEmbedRevision } = require('./embeds/revisionEmbed');
 const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
 const { actualizarPanel, actualizarRevision, crearPanelRevision } = require('./utils/panel');
-const { startScoutVerification, isVerificationButton } = require('./utils/verification');
+const { startScoutVerification, isVerificationButton, handleVerificationScreenshotMessage } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
 
@@ -67,7 +67,10 @@ client.on("interactionCreate", async interaction => {
 
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
-  if (!message.guild) return;
+  if (!message.guild) {
+    await handleVerificationScreenshotMessage(message);
+    return;
+  }
 
   if (message.content.toLowerCase() !== "!revisar") return;
 

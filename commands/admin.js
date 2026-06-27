@@ -4,7 +4,7 @@ const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel, crearPanelRevision } = require('../utils/panel');
-const { forceScoutVerification } = require('../utils/verification');
+const { forceScoutVerification, getVerificationMode, normalizeVerificationMode } = require('../utils/verification');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,6 +25,19 @@ module.exports = {
           option.setName("usuario")
             .setDescription("Scout a verificar")
             .setRequired(true)
+        )
+    )
+    .addSubcommand(subcmd =>
+      subcmd.setName("verificacion")
+        .setDescription("Ver o cambiar el modo de verificacion de scouts")
+        .addStringOption(option =>
+          option.setName("modo")
+            .setDescription("normal: boton directo | foto: pide captura con hora visible")
+            .setRequired(false)
+            .addChoices(
+              { name: "Normal", value: "normal" },
+              { name: "Con foto", value: "foto" }
+            )
         )
     )
     .addSubcommand(subcmd => 
@@ -112,6 +125,28 @@ module.exports = {
         content: `Verificacion enviada a ${usuario}.`,
         flags: MessageFlags.Ephemeral
       });
+    }
+
+    /* ===== MODO VERIFICACION ===== */
+    if (sub === "verificacion") {
+      const modo = interaction.options.getString("modo");
+      if (modo) {
+        state.verificationMode = normalizeVerificationMode(modo);
+        guardarDatos();
+      }
+
+      const actual = getVerificationMode();
+      const label = actual === "foto" ? "Con foto" : "Normal";
+      const detalle = actual === "foto"
+        ? "El scout debe pulsar **Sigo activo** y enviar una captura con la hora visible."
+        : "El scout confirma solo pulsando **Sigo activo**.";
+
+      const embed = new EmbedBuilder()
+        .setTitle("Modo de verificacion")
+        .setColor(actual === "foto" ? 0xf1c40f : 0x57f287)
+        .setDescription(`Modo actual: **${label}**\n${detalle}`);
+
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     /* ===== RESET REVISION ===== */

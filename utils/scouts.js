@@ -12,19 +12,22 @@ function guardarUltimosMapas(userId) {
   if (lista.length > 0) state.ultimosMapas[userId] = lista;
 }
 
-function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOverride = null) {
+function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOverride = null, options = {}) {
   const entradas = state.scoutsActivos[userId];
   if (!entradas || entradas.length === 0) return;
 
   const fin = finOverride || Date.now();
+  const creditFrom = options.creditFrom || null;
   entradas.forEach(entry => {
-    const duracionMin = Math.max(0, Math.floor((fin - entry.inicio) / 60000));
+    const inicio = creditFrom ? Math.max(entry.inicio, creditFrom) : entry.inicio;
+    const duracionMin = Math.max(0, Math.floor((fin - inicio) / 60000));
     const registro = {
       userId,
       username: username || entry.username || userId,
       ciudad: entry.ciudad,
       mapa: entry.mapa,
-      inicio: entry.inicio,
+      inicio,
+      inicioOriginal: entry.inicio,
       fin,
       duracionMin,
       motivo

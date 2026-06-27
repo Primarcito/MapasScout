@@ -27,6 +27,9 @@ module.exports = {
   // verificacionesScout[userId] = { status, messageId, channelId, reviewMessageId, expiresAt, ... }
   verificacionesScout: {},
 
+  // Modo de verificacion de scout: "normal" confirma con boton, "foto" pide captura por MD.
+  verificationMode: null,
+
   // ultimosMapas[userId] = [ { ciudad, mapa }, ... ]
   ultimosMapas: {},
 

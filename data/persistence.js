@@ -13,7 +13,12 @@ function guardarDatos() {
   ensureRoot();
   fs.writeFileSync(
     path.join(ROOT, config.DATA_FILE),
-    JSON.stringify({ mapas: state.mapas, registros: state.registros, ultimaEdicion: state.ultimaEdicion }, null, 2)
+    JSON.stringify({
+      mapas: state.mapas,
+      registros: state.registros,
+      ultimaEdicion: state.ultimaEdicion,
+      verificationMode: state.verificationMode,
+    }, null, 2)
   );
 }
 
@@ -24,6 +29,7 @@ function cargarDatos() {
     state.mapas = data.mapas || state.mapas;
     state.registros = data.registros || {};
     state.ultimaEdicion = data.ultimaEdicion || null;
+    state.verificationMode = data.verificationMode || state.verificationMode;
   }
 }
 

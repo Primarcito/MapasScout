@@ -35,6 +35,9 @@ const SETTINGS = {
 
     // Canal donde se registran entradas, salidas y verificaciones de scouts.
     scoutLog: '1508505812018921632',
+
+    // Canal donde se archivan capturas de verificacion de scout.
+    verificationEvidence: '1518825780816253028',
   },
 
   files: {
@@ -56,6 +59,7 @@ const SETTINGS = {
   verification: {
     // Corta sesiones abiertas que nadie confirma, para evitar horas infinitas.
     enabled: process.env.SCOUT_VERIFICATION_ENABLED !== 'false',
+    mode: process.env.SCOUT_VERIFICATION_MODE || 'foto',
     maxActiveMinutes: Number(process.env.SCOUT_VERIFICATION_MAX_MINUTES || 240),
     graceMinutes: Number(process.env.SCOUT_VERIFICATION_GRACE_MINUTES || 10),
     checkIntervalMinutes: Number(process.env.SCOUT_VERIFICATION_CHECK_MINUTES || 5),
