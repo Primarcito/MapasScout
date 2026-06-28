@@ -6,7 +6,52 @@ const { componentesRevision } = require('../components/revisionComponents');
 const { generarEmbedRevision } = require('../embeds/revisionEmbed');
 const { calcularTiempoReal } = require('../utils/timeCalc');
 
+const EMBED_SAFE_DESCRIPTION_LIMIT = 3900;
+
+function crearEmbedHistorial(desc, page = 1, totalPages = 1) {
+  const title = totalPages > 1
+    ? `📊 Resumen del Día ${page}/${totalPages}`
+    : "📊 Resumen del Día";
+
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setColor(0x2b2d31)
+    .setDescription(desc);
+}
+
+function dividirEnEmbedsHistorial(header, lines, footer) {
+  const paginas = [];
+  let paginaActual = [];
+
+  const crearDescripcion = (pageLines) => `${header}\n\n${pageLines.join("")}\n${footer}`;
+
+  if (lines.length === 0) {
+    return [crearEmbedHistorial(crearDescripcion(["No hay actividad registrada hoy.\n"]))];
+  }
+
+  for (const line of lines) {
+    const propuesta = [...paginaActual, line];
+    if (paginaActual.length > 0 && crearDescripcion(propuesta).length > EMBED_SAFE_DESCRIPTION_LIMIT) {
+      paginas.push(paginaActual);
+      paginaActual = [line];
+    } else {
+      paginaActual = propuesta;
+    }
+  }
+
+  if (paginaActual.length > 0) paginas.push(paginaActual);
+
+  const totalPages = paginas.length;
+  return paginas.map((pageLines, index) => (
+    crearEmbedHistorial(crearDescripcion(pageLines), index + 1, totalPages)
+  ));
+}
+
 function generarEmbedHistorial() {
+  return generarEmbedsHistorial()[0];
+}
+
+function generarEmbedsHistorial() {
   // Combinar historialDia con sesiones activas
   const todasSesiones = [...state.historialDia];
 
@@ -56,22 +101,18 @@ function generarEmbedHistorial() {
   const sorted = Object.values(porUsuario).sort((a, b) => b.totalMin - a.totalMin);
 
   const medallas = ["🥇", "🥈", "🥉"];
-  let texto = "";
+  const lineasRanking = [];
   
-  if (sorted.length === 0) {
-    texto = "No hay actividad registrada hoy.";
-  } else {
-    sorted.forEach((u, index) => {
-      const horas = Math.floor(u.totalMin / 60);
-      const mins = u.totalMin % 60;
-      const tiempo = horas > 0 ? `${horas}h ${mins}m` : `${mins}m`;
-      const numMapas = u.mapasUnicos.size;
-      const estado = u.activo ? "🟢" : "⚪";
-      const medalla = index < 3 ? medallas[index] : `${index + 1}.`;
-      
-      texto += `${medalla} **${u.username}** — ${tiempo} • ${numMapas} mapa${numMapas > 1 ? 's' : ''} • ${estado}\n`;
-    });
-  }
+  sorted.forEach((u, index) => {
+    const horas = Math.floor(u.totalMin / 60);
+    const mins = u.totalMin % 60;
+    const tiempo = horas > 0 ? `${horas}h ${mins}m` : `${mins}m`;
+    const numMapas = u.mapasUnicos.size;
+    const estado = u.activo ? "🟢" : "⚪";
+    const medalla = index < 3 ? medallas[index] : `${index + 1}.`;
+
+    lineasRanking.push(`${medalla} **${u.username}** — ${tiempo} • ${numMapas} mapa${numMapas > 1 ? 's' : ''} • ${estado}\n`);
+  });
 
   // Calculate coverage for summary
   let totalMapas = 0;
@@ -103,12 +144,18 @@ function generarEmbedHistorial() {
   const opcionesFecha = { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' };
   const fechaHoy = new Date().toLocaleDateString('es-ES', opcionesFecha);
 
-  const desc = `**${fechaHoy}**\n\n👥 ${sorted.length} scouts  •  ⏱️ ${tiempoGlobal}  •  🗺️ ${mapasCubiertos}/${totalMapas}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n${texto}\n\n📊 **${pct}% cobertura** • Se reinicia a las 10 UTC`;
+  const header = `**${fechaHoy}**\n\n👥 ${sorted.length} scouts  •  ⏱️ ${tiempoGlobal}  •  🗺️ ${mapasCubiertos}/${totalMapas}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  const footer = `📊 **${pct}% cobertura** • Se reinicia a las 10 UTC`;
 
-  return new EmbedBuilder()
-    .setTitle("📊 Resumen del Día")
-    .setColor(0x2b2d31)
-    .setDescription(desc);
+  return dividirEnEmbedsHistorial(header, lineasRanking, footer);
+}
+
+async function enviarEmbedsPaginados(interaction, embeds) {
+  await interaction.reply({ embeds: [embeds[0]] });
+
+  for (const embed of embeds.slice(1)) {
+    await interaction.followUp({ embeds: [embed] });
+  }
 }
 
 module.exports = {
@@ -129,14 +176,15 @@ module.exports = {
     ),
 
   generarEmbedHistorial,
+  generarEmbedsHistorial,
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
 
     /* ===== HISTORIAL ===== */
     if (sub === "historial") {
-      const embed = generarEmbedHistorial();
-      return interaction.reply({ embeds: [embed] });
+      const embeds = generarEmbedsHistorial();
+      return enviarEmbedsPaginados(interaction, embeds);
     }
 
     /* ===== REVISAR ===== */

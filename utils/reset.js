@@ -2,7 +2,7 @@ const state = require('../data/state');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
 const { cerrarScoutsActivos } = require('./scouts');
 const { actualizarPanel } = require('./panel');
-const { generarEmbedHistorial } = require('../commands/scout');
+const { generarEmbedsHistorial } = require('../commands/scout');
 const { cancelScoutVerification } = require('./verification');
 const config = require('../config');
 
@@ -61,8 +61,10 @@ async function ejecutarReset() {
     if (config.ARCHIVE_CHANNEL_ID && state.client) {
       const canalArchivo = await state.client.channels.fetch(config.ARCHIVE_CHANNEL_ID);
       if (canalArchivo) {
-        const embedHistorial = generarEmbedHistorial();
-        await canalArchivo.send({ embeds: [embedHistorial] });
+        const embedsHistorial = generarEmbedsHistorial();
+        for (const embedHistorial of embedsHistorial) {
+          await canalArchivo.send({ embeds: [embedHistorial] });
+        }
         console.log("Historial diario archivado correctamente.");
       }
     }
