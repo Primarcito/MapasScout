@@ -13,6 +13,7 @@ const { actualizarPanel, actualizarRevision, crearPanelRevision } = require('./u
 const { startScoutVerification, isVerificationButton, handleVerificationScreenshotMessage } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
+const { sendCreatorMessage } = require('./utils/creatorMessages');
 
 /* ================= CARGAR DATOS PERSISTIDOS ================= */
 
@@ -107,6 +108,10 @@ client.on("error", (err) => {
 
 client.once("clientReady", async () => {
   console.log(`Bot listo: ${client.user.tag}`);
+
+  if (config.CREATOR_NOTIFY_STARTUP) {
+    await sendCreatorMessage(`Bot de mapas listo: **${client.user.tag}**`);
+  }
 
   try {
     if (state.panelChannelId && state.panelMessageId) {

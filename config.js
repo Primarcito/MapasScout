@@ -15,6 +15,10 @@ module.exports = {
   TOKEN: process.env.TOKEN,
   CLIENT_ID: process.env.CLIENT_ID || "1473617798600200342",
   GUILD_ID: SERVER_IDS.main,
+  CREATOR_USER_IDS: settings.creator.userIds,
+  CREATOR_NOTIFY_SCOUT_LOGS: settings.creator.notifyScoutLogs,
+  CREATOR_NOTIFY_VERIFICATION: settings.creator.notifyVerification,
+  CREATOR_NOTIFY_STARTUP: settings.creator.notifyStartup,
 
   SCOUT_ROLE_ID: firstId(ROLE_IDS.scout),
   SCOUT_ROLE_IDS: ROLE_IDS.scout,

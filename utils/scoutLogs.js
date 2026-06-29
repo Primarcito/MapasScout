@@ -1,5 +1,6 @@
 const state = require('../data/state');
 const config = require('../config');
+const { sendCreatorMessage } = require('./creatorMessages');
 
 function formatMap({ ciudad, mapa }) {
   return `${ciudad} - ${mapa}`;
@@ -16,19 +17,27 @@ function formatUser(userId, username = null) {
 }
 
 async function sendScoutLog(type, lines) {
-  if (!state.client || !config.SCOUT_LOG_CHANNEL_ID) return;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const content = `**[${type}]** <t:${timestamp}:T>\n${lines.join('\n')}`;
 
-  try {
-    const channel = await state.client.channels.fetch(config.SCOUT_LOG_CHANNEL_ID);
-    if (!channel) return;
+  if (!state.client) return;
 
-    const timestamp = Math.floor(Date.now() / 1000);
-    await channel.send({
-      content: `**[${type}]** <t:${timestamp}:T>\n${lines.join('\n')}`,
-      allowedMentions: { parse: [] }
-    });
-  } catch (err) {
-    console.error('Error enviando log de scout:', err);
+  if (config.SCOUT_LOG_CHANNEL_ID) {
+    try {
+      const channel = await state.client.channels.fetch(config.SCOUT_LOG_CHANNEL_ID);
+      if (channel) {
+        await channel.send({
+          content,
+          allowedMentions: { parse: [] }
+        });
+      }
+    } catch (err) {
+      console.error('Error enviando log de scout:', err);
+    }
+  }
+
+  if (config.CREATOR_NOTIFY_SCOUT_LOGS) {
+    await sendCreatorMessage(content);
   }
 }
 

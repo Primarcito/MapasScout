@@ -1,12 +1,14 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const state = require('../data/state');
 const settings = require('../settings');
+const config = require('../config');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
 const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('./scouts');
 const { actualizarPanel } = require('./panel');
 const { verificarMapaVacio } = require('./alerts');
 const { sendScoutLog, formatMaps, formatUser } = require('./scoutLogs');
 const { canScout, canDecideVerification } = require('../permissions');
+const { isCreatorUser, sendCreatorDm } = require('./creatorMessages');
 
 let intervalId = null;
 
@@ -31,6 +33,7 @@ function getVerificationConfig() {
     mode: getVerificationMode(),
     maxActiveMinutes: numberOrDefault(raw.maxActiveMinutes, 240, 15),
     graceMinutes: numberOrDefault(raw.graceMinutes, 10, 1),
+    reviewMinutes: numberOrDefault(raw.reviewMinutes, raw.graceMinutes || 10, 1),
     checkIntervalMinutes: numberOrDefault(raw.checkIntervalMinutes, 5, 1),
     scoutReviewVotes: numberOrDefault(raw.scoutReviewVotes, 3, 1),
   };
@@ -53,6 +56,10 @@ function getActiveEntries(userId) {
 
 function getOldestStart(entries) {
   return entries.reduce((oldest, entry) => Math.min(oldest, entry.inicio), Date.now());
+}
+
+function getCreditUntilOnClose(pending) {
+  return pending?.creditUntilOnClose || pending?.creditFromOnExpire || Date.now();
 }
 
 function getRegisteredMaps(userId) {
@@ -115,6 +122,23 @@ function verificationButtons(userId) {
   ];
 }
 
+function creatorVerificationButtons(userId, disabled = false) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`verificacion_creador_confirmar_${userId}`)
+        .setLabel('Confirmar activo')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(disabled),
+      new ButtonBuilder()
+        .setCustomId(`verificacion_creador_salir_${userId}`)
+        .setLabel('Retirar')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(disabled)
+    )
+  ];
+}
+
 function evidenceReviewButtons(userId, disabled = false) {
   return [
     new ActionRowBuilder().addComponents(
@@ -130,6 +154,42 @@ function evidenceReviewButtons(userId, disabled = false) {
         .setDisabled(disabled)
     )
   ];
+}
+
+async function sendCreatorVerificationRequest(userId, entries, activeMinutes, cfg, options = {}) {
+  if (!config.CREATOR_NOTIFY_VERIFICATION) return [];
+
+  const origin = options.requestedBy ? `manual por <@${options.requestedBy}>` : 'automatica';
+  return sendCreatorDm({
+    content:
+      `**Verificacion enviada**\n` +
+      `Scout: ${formatUser(userId, getScoutUsername(userId))}\n` +
+      `Mapas: ${formatMaps(entries)}\n` +
+      `Tiempo activo: ${formatMinutes(activeMinutes)}\n` +
+      `Modo: ${cfg.mode}\n` +
+      `Origen: ${origin}\n` +
+      `Vence: <t:${Math.floor((Date.now() + cfg.graceMinutes * 60000) / 1000)}:R>`,
+    components: creatorVerificationButtons(userId),
+  });
+}
+
+async function sendCreatorEvidenceCopy(userId, entries, attachments, evidenceMessage, username) {
+  if (!config.CREATOR_NOTIFY_VERIFICATION) return [];
+
+  const cfg = getVerificationConfig();
+  const files = attachments.map((attachment, index) => ({
+    attachment: attachment.url,
+    name: attachment.name || `verificacion_${userId}_${index + 1}.png`,
+  }));
+
+  return sendCreatorDm({
+    content:
+      `**Captura de verificacion recibida**\n` +
+      buildEvidenceReviewContent(userId, entries, { approve: [], reject: [] }, cfg, null, username) +
+      `\nCanal: ${evidenceMessage?.url || 'sin enlace'}`,
+    files,
+    components: evidenceReviewButtons(userId),
+  });
 }
 
 async function getUserDmChannel(userId) {
@@ -215,7 +275,7 @@ async function requestVerification(userId, entries, now, cfg, options = {}) {
 
   const oldestStart = getOldestStart(entries);
   const activeMinutes = Math.floor((now - oldestStart) / 60000);
-  const creditFromOnExpire = Math.min(now, oldestStart + cfg.maxActiveMinutes * 60000);
+  const creditUntilOnClose = Math.min(now, oldestStart + cfg.maxActiveMinutes * 60000);
   const expiresAt = now + cfg.graceMinutes * 60000;
 
   try {
@@ -237,9 +297,11 @@ async function requestVerification(userId, entries, now, cfg, options = {}) {
       isDm: true,
       createdAt: now,
       mode: cfg.mode,
-      creditFromOnExpire,
+      creditUntilOnClose,
       expiresAt,
     };
+
+    await sendCreatorVerificationRequest(userId, entries, activeMinutes, cfg, options);
 
     await sendScoutLog('VERIFICACION_ENVIADA', [
       `Scout: ${formatUser(userId, getScoutUsername(userId))}`,
@@ -315,12 +377,17 @@ async function reviewActiveScouts() {
     }
 
     if (pending.status === 'waiting_review') {
+      const reviewExpiresAt = pending.reviewExpiresAt || pending.expiresAt;
+      if (reviewExpiresAt && reviewExpiresAt <= now) {
+        await closeScoutByVerification(userId, 'verificacion_revision_expirada', getCreditUntilOnClose(pending), {
+          content: `<@${userId}> tu captura no fue aprobada a tiempo y fuiste retirado de mapas.`
+        });
+      }
       continue;
     }
 
     if (pending.expiresAt <= now) {
-      await closeScoutByVerification(userId, 'verificacion_expirada', pending.expiresAt, {
-        creditFrom: pending.creditFromOnExpire,
+      await closeScoutByVerification(userId, 'verificacion_expirada', getCreditUntilOnClose(pending), {
         content: `<@${userId}> fuiste retirado de mapas por no responder la verificacion a tiempo.`
       });
     }
@@ -333,7 +400,10 @@ async function reviewActiveScouts() {
     const oldestStart = getOldestStart(entries);
 
     if (oldestStart + maxMs <= now) {
-      await requestVerification(userId, entries, now, cfg);
+      const result = await requestVerification(userId, entries, now, cfg);
+      if (!result.ok && ['dm_unavailable', 'send_failed'].includes(result.reason)) {
+        await closeScoutByVerification(userId, `verificacion_${result.reason}`, oldestStart + maxMs);
+      }
     }
   }
 }
@@ -362,7 +432,8 @@ function startScoutVerification() {
 
 function isVerificationButton(customId) {
   return /^verificacion_(confirmar|salir)_\d+$/.test(customId)
-    || /^verificacion_evidencia_(ok|mal)_\d+$/.test(customId);
+    || /^verificacion_evidencia_(ok|mal)_\d+$/.test(customId)
+    || /^verificacion_creador_(confirmar|salir)_\d+$/.test(customId);
 }
 
 async function confirmScoutVerification(interaction, userId) {
@@ -386,8 +457,7 @@ async function confirmScoutVerification(interaction, userId) {
       content: `<@${userId}> la verificacion expiro y fuiste retirado de mapas.`,
       components: []
     });
-    await closeScoutByVerification(userId, 'verificacion_expirada', pending.expiresAt, {
-      creditFrom: pending.creditFromOnExpire,
+    await closeScoutByVerification(userId, 'verificacion_expirada', getCreditUntilOnClose(pending), {
       skipMessageEdit: true
     });
     return;
@@ -417,7 +487,7 @@ async function confirmScoutVerification(interaction, userId) {
 }
 
 async function completeScoutVerification(userId, username, entries, options = {}) {
-  const now = Date.now();
+  const now = options.completedAt || Date.now();
   const nextEntries = entries.map(entry => ({
     ...entry,
     inicio: now,
@@ -456,8 +526,7 @@ async function handleVerificationScreenshotMessage(message) {
 
   const now = Date.now();
   if (pending.expiresAt <= now) {
-    await closeScoutByVerification(userId, 'verificacion_expirada', pending.expiresAt, {
-      creditFrom: pending.creditFromOnExpire,
+    await closeScoutByVerification(userId, 'verificacion_expirada', getCreditUntilOnClose(pending), {
       content: `<@${userId}> la verificacion expiro y fuiste retirado de mapas.`
     });
     await message.reply('La verificacion expiro y fuiste retirado de mapas.');
@@ -488,10 +557,13 @@ async function handleVerificationScreenshotMessage(message) {
   pending.reviewMessageId = evidenceMessage.id;
   pending.reviewVotes = { approve: [], reject: [] };
   pending.evidenceUrl = evidenceMessage.url;
+  pending.screenshotReceivedAt = now;
+  pending.reviewExpiresAt = now + getVerificationConfig().reviewMinutes * 60000;
+  await sendCreatorEvidenceCopy(userId, entries, attachments, evidenceMessage, message.author.username);
 
   await editVerificationMessage(
     pending,
-    `<@${userId}> captura recibida. Espera la aprobacion de scouts o GM/officer.`
+    `<@${userId}> captura recibida. Espera la aprobacion de scouts o GM/officer antes de <t:${Math.floor(pending.reviewExpiresAt / 1000)}:R>.`
   );
   await sendScoutLog('VERIFICACION_CAPTURA', [
     `Scout: ${formatUser(userId, message.author.username)}`,
@@ -519,14 +591,14 @@ async function finalizeEvidenceReview(interaction, userId, approved, entries, pe
     await completeScoutVerification(userId, username, entries, {
       resultado: 'captura aprobada',
       evidenceUrl: pending.evidenceUrl || interaction.message.url,
+      completedAt: pending.screenshotReceivedAt || Date.now(),
     });
     await editVerificationMessage(
       pending,
       `<@${userId}> verificacion aprobada. Sigues activo en tus mapas.`
     );
   } else {
-    await closeScoutByVerification(userId, 'verificacion_rechazada', Date.now(), {
-      creditFrom: pending.creditFromOnExpire,
+    await closeScoutByVerification(userId, 'verificacion_rechazada', getCreditUntilOnClose(pending), {
       content: `<@${userId}> tu captura fue rechazada y fuiste retirado de mapas.`
     });
   }
@@ -572,7 +644,8 @@ async function handleEvidenceReviewButton(interaction, action, userId) {
     return true;
   }
 
-  const isOfficer = canDecideVerification(interaction.member);
+  const isCreator = isCreatorUser(interaction.user.id);
+  const isOfficer = isCreator || canDecideVerification(interaction.member);
   const isScout = canScout(interaction.member);
   if (interaction.user.id === userId && !isOfficer) {
     await interaction.reply({
@@ -591,7 +664,7 @@ async function handleEvidenceReviewButton(interaction, action, userId) {
   }
 
   const approved = action === 'ok';
-  const decidedBy = isOfficer ? `GM/Officer ${interaction.user}` : `${interaction.user}`;
+  const decidedBy = isCreator ? `creador ${interaction.user}` : (isOfficer ? `GM/Officer ${interaction.user}` : `${interaction.user}`);
   const votes = ensureReviewVotes(pending);
 
   if (isOfficer) {
@@ -639,7 +712,58 @@ async function leaveFromVerification(interaction, userId) {
   });
 }
 
+async function handleCreatorVerificationButton(interaction, action, userId) {
+  if (!isCreatorUser(interaction.user.id)) {
+    await interaction.reply({
+      content: 'Solo el creador puede usar este boton.',
+      flags: MessageFlags.Ephemeral
+    });
+    return true;
+  }
+
+  const pending = state.verificacionesScout[userId];
+  const entries = getActiveEntries(userId);
+  await interaction.deferUpdate();
+
+  if (!pending || entries.length === 0) {
+    delete state.verificacionesScout[userId];
+    await interaction.message.edit({
+      content: `La verificacion de <@${userId}> ya no esta activa.`,
+      components: creatorVerificationButtons(userId, true)
+    });
+    return true;
+  }
+
+  if (action === 'confirmar') {
+    const username = getScoutUsername(userId);
+    await completeScoutVerification(userId, username, entries, {
+      resultado: `confirmado por creador ${interaction.user.username || interaction.user.id}`,
+    });
+    await editVerificationMessage(pending, `<@${userId}> verificacion confirmada por el creador. Sigues activo en tus mapas.`);
+    await interaction.message.edit({
+      content: `<@${userId}> confirmado por el creador. Sigue activo en sus mapas.`,
+      components: creatorVerificationButtons(userId, true)
+    });
+    return true;
+  }
+
+  await closeScoutByVerification(userId, 'verificacion_retirada_por_creador', getCreditUntilOnClose(pending), {
+    content: `<@${userId}> fuiste retirado de mapas por decision del creador.`
+  });
+  await interaction.message.edit({
+    content: `<@${userId}> retirado de mapas por el creador.`,
+    components: creatorVerificationButtons(userId, true)
+  });
+  return true;
+}
+
 async function handleVerificationButton(interaction) {
+  const creatorMatch = interaction.customId.match(/^verificacion_creador_(confirmar|salir)_(\d+)$/);
+  if (creatorMatch) {
+    const [, action, userId] = creatorMatch;
+    return handleCreatorVerificationButton(interaction, action, userId);
+  }
+
   const reviewMatch = interaction.customId.match(/^verificacion_evidencia_(ok|mal)_(\d+)$/);
   if (reviewMatch) {
     const [, action, userId] = reviewMatch;

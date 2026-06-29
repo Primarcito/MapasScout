@@ -4,6 +4,17 @@ const SETTINGS = {
     main: '1435778823743340650',
   },
 
+  creator: {
+    // ID de Discord del creador. Configuralo en Railway/.env con CREATOR_USER_ID.
+    userIds: (process.env.CREATOR_USER_ID || process.env.OWNER_USER_ID || '852823068475785217')
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean),
+    notifyScoutLogs: process.env.CREATOR_NOTIFY_SCOUT_LOGS === 'true',
+    notifyVerification: process.env.CREATOR_NOTIFY_VERIFICATION !== 'false',
+    notifyStartup: process.env.CREATOR_NOTIFY_STARTUP === 'true',
+  },
+
   roles: {
     // Puede anotarse, revisar mapas y recibir alertas de mapas vacios.
     scout: [
@@ -68,6 +79,7 @@ const SETTINGS = {
     mode: process.env.SCOUT_VERIFICATION_MODE || 'foto',
     maxActiveMinutes: Number(process.env.SCOUT_VERIFICATION_MAX_MINUTES || 240),
     graceMinutes: Number(process.env.SCOUT_VERIFICATION_GRACE_MINUTES || 10),
+    reviewMinutes: Number(process.env.SCOUT_VERIFICATION_REVIEW_MINUTES || 10),
     checkIntervalMinutes: Number(process.env.SCOUT_VERIFICATION_CHECK_MINUTES || 5),
     scoutReviewVotes: Number(process.env.SCOUT_VERIFICATION_SCOUT_VOTES || 3),
   },
