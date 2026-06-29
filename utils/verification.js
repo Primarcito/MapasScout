@@ -582,6 +582,29 @@ function ensureReviewVotes(pending) {
   return pending.reviewVotes;
 }
 
+async function editEvidenceReviewMessages(interaction, pending, payload) {
+  const editedMessageIds = new Set();
+
+  try {
+    await interaction.message.edit(payload);
+    editedMessageIds.add(interaction.message.id);
+  } catch (err) {
+    console.error('Error actualizando mensaje de verificacion actual:', err.message);
+  }
+
+  if (!pending?.reviewChannelId || !pending?.reviewMessageId || editedMessageIds.has(pending.reviewMessageId)) {
+    return;
+  }
+
+  try {
+    const channel = await state.client?.channels.fetch(pending.reviewChannelId);
+    const reviewMessage = await channel?.messages.fetch(pending.reviewMessageId);
+    await reviewMessage?.edit(payload);
+  } catch (err) {
+    console.error('Error actualizando mensaje de verificacion en canal:', err.message);
+  }
+}
+
 async function finalizeEvidenceReview(interaction, userId, approved, entries, pending, decidedBy) {
   const username = getScoutUsername(userId);
   const cfg = getVerificationConfig();
@@ -603,7 +626,7 @@ async function finalizeEvidenceReview(interaction, userId, approved, entries, pe
     });
   }
 
-  await interaction.message.edit({
+  await editEvidenceReviewMessages(interaction, pending, {
     content: buildEvidenceReviewContent(
       userId,
       entries,
