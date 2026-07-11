@@ -13,10 +13,15 @@ module.exports = {
   // Cobertura: tiempo total por mapa { "ciudad__mapa": { ciudad, mapa, minutos, ... } }
   coberturaDia: {},
 
-  // alertasMapas[ciudad__mapa] = { messageId, timeout20min, timeout90min }
-  alertasMapas: {},
+  // mapasEnAlerta[ciudad__mapa] = { ciudad, mapa, vacioDesde }
+  mapasEnAlerta: {},
+  alertMessageId: null,
+  alertChannelId: null,
+  legacyAlertsCleaned: false,
 
   revisionMessageId: null,
+  revisionMobileMessageId: null,
+  revisionMobileChannelId: null,
   panelChannelId: null,
   panelMessageId: null,
 
@@ -49,6 +54,10 @@ module.exports = {
   ultimaEdicion: null,
 
   revisionMessage: null,
+  revisionMobileMessage: null,
   // revisionEstado[ciudad__mapa] = { revisadoEn: timestamp, revisores: [...] }
-  revisionEstado: {}
+  revisionEstado: {},
+  revisionRound: null,
+  revisionScores: {},
+  revisionRoundHistory: []
 };

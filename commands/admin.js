@@ -3,8 +3,9 @@ const state = require('../data/state');
 const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
-const { actualizarPanel, crearPanelRevision } = require('../utils/panel');
+const { crearPanelRevision, actualizarRevision } = require('../utils/panel');
 const { forceScoutVerification, getVerificationMode, normalizeVerificationMode } = require('../utils/verification');
+const { startRevisionRound } = require('../utils/revisionRounds');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -156,6 +157,7 @@ module.exports = {
         if (state.revisionEstado[key]?.timeout) clearTimeout(state.revisionEstado[key].timeout);
         delete state.revisionEstado[key];
       }
+      startRevisionRound();
 
       // Borrar mensaje viejo
       if (state.revisionMessage) {
@@ -167,6 +169,7 @@ module.exports = {
 
       // Recrear panel en el canal fijo
       await crearPanelRevision();
+      await actualizarRevision();
 
       return interaction.reply({
         content: "✅ Panel de revisión reseteado.",

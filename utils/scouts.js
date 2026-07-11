@@ -1,4 +1,5 @@
 const state = require('../data/state');
+const { normalizarReferenciasMapas } = require('./mapNames');
 
 function guardarUltimosMapas(userId) {
   const lista = [];
@@ -9,7 +10,13 @@ function guardarUltimosMapas(userId) {
       }
     }
   }
-  if (lista.length > 0) state.ultimosMapas[userId] = lista;
+
+  // scoutsActivos es una segunda fuente de verdad. Al unir ambas evitamos
+  // perder mapas si un flujo parcial ya modificó registros.
+  lista.push(...(state.scoutsActivos[userId] || []));
+  const completa = normalizarReferenciasMapas(lista).map(({ ciudad, mapa }) => ({ ciudad, mapa }));
+  if (completa.length > 0) state.ultimosMapas[userId] = completa;
+  return completa;
 }
 
 function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOverride = null, options = {}) {
@@ -18,8 +25,10 @@ function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOver
 
   const fin = finOverride || Date.now();
   const creditFrom = options.creditFrom || null;
+  const creditPenaltyMs = Math.max(0, Number(options.creditPenaltyMs) || 0);
   entradas.forEach(entry => {
-    const inicio = creditFrom ? Math.max(entry.inicio, creditFrom) : entry.inicio;
+    const inicioBase = creditFrom ? Math.max(entry.inicio, creditFrom) : entry.inicio;
+    const inicio = Math.min(fin, inicioBase + creditPenaltyMs);
     const duracionMin = Math.max(0, Math.floor((fin - inicio) / 60000));
     const registro = {
       userId,
@@ -30,7 +39,9 @@ function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOver
       inicioOriginal: entry.inicio,
       fin,
       duracionMin,
-      motivo
+      motivo,
+      ...(options.verificationId ? { verificationId: options.verificationId } : {}),
+      ...(options.provisional ? { provisional: true } : {}),
     };
     state.historialScouts.push(registro);
     // Solo agregar al historialDia si no fue por reset
@@ -47,6 +58,10 @@ function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOver
   delete state.scoutsActivos[userId];
 }
 
+function descartarScoutsActivos(userId) {
+  delete state.scoutsActivos[userId];
+}
+
 function borrarRegistrosUsuario(userId) {
   for (const ciudad in state.registros) {
     for (const mapa in state.registros[ciudad]) {
@@ -55,4 +70,4 @@ function borrarRegistrosUsuario(userId) {
   }
 }
 
-module.exports = { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario };
+module.exports = { guardarUltimosMapas, cerrarScoutsActivos, descartarScoutsActivos, borrarRegistrosUsuario };

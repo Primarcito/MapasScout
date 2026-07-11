@@ -2,9 +2,9 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js'
 const state = require('../data/state');
 const config = require('../config');
 const { canReview, canExport } = require('../permissions');
-const { componentesRevision } = require('../components/revisionComponents');
-const { generarEmbedRevision } = require('../embeds/revisionEmbed');
+const { crearPanelRevisionMovil } = require('../utils/panel');
 const { calcularTiempoReal } = require('../utils/timeCalc');
+const { getRevisionMultiplier } = require('../utils/revisionRounds');
 
 const EMBED_SAFE_DESCRIPTION_LIMIT = 3900;
 
@@ -75,6 +75,7 @@ function generarEmbedsHistorial() {
     const key = s.userId;
     if (!porUsuario[key]) {
       porUsuario[key] = {
+        userId: key,
         username: s.username || s.userId,
         mapasUnicos: new Set(),
         sesiones: [],
@@ -95,10 +96,12 @@ function generarEmbedsHistorial() {
     if (state.scoutsActivos[key] && state.scoutsActivos[key].length > 0) {
       u.activo = true;
     }
+    u.multiplier = getRevisionMultiplier(key);
+    u.points = Math.round(u.totalMin * u.multiplier);
   }
 
   // Ordenar por tiempo total
-  const sorted = Object.values(porUsuario).sort((a, b) => b.totalMin - a.totalMin);
+  const sorted = Object.values(porUsuario).sort((a, b) => b.points - a.points || b.totalMin - a.totalMin);
 
   const medallas = ["🥇", "🥈", "🥉"];
   const lineasRanking = [];
@@ -111,7 +114,10 @@ function generarEmbedsHistorial() {
     const estado = u.activo ? "🟢" : "⚪";
     const medalla = index < 3 ? medallas[index] : `${index + 1}.`;
 
-    lineasRanking.push(`${medalla} **${u.username}** — ${tiempo} • ${numMapas} mapa${numMapas > 1 ? 's' : ''} • ${estado}\n`);
+    lineasRanking.push(
+      `${medalla} **${u.username}** — **${u.points} pts** · ${tiempo} · x${u.multiplier.toFixed(2)} · ` +
+      `${numMapas} mapa${numMapas > 1 ? 's' : ''} · ${estado}\n`
+    );
   });
 
   // Calculate coverage for summary
@@ -196,22 +202,9 @@ module.exports = {
         });
       }
 
-      const comps = componentesRevision();
-
-      if (comps.length === 0) {
-        return interaction.reply({
-          content: "No hay scouts anotados en ningún mapa.",
-          flags: MessageFlags.Ephemeral
-        });
-      }
-
-      const revisionReply = await interaction.reply({
-        embeds: [generarEmbedRevision()],
-        components: comps,
-        withResponse: true
-      });
-      state.revisionMessage = revisionReply.resource.message;
-      return;
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await crearPanelRevisionMovil(interaction.channel);
+      return interaction.editReply('Panel móvil de revisión actualizado en este canal.');
     }
 
     /* ===== EXPORTAR ===== */

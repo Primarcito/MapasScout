@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const state = require('../data/state');
-const config = require('../config');
+const { textEmoji, cityTextEmoji } = require('../emojis');
 
 const MAX_EMBED_DESCRIPTION_LENGTH = 4096;
 const MAX_EMBEDS_PER_MESSAGE = 10;
@@ -48,9 +48,9 @@ function calcularColorEmbed() {
   }
   if (total === 0) return 0xe91e63;
   const pct = cubiertos / total;
-  if (pct >= 0.8) return 0x57f287;
-  if (pct >= 0.4) return 0xfee75c;
-  return 0xe91e63;
+  if (pct >= 0.8) return 0x167d8d;
+  if (pct >= 0.4) return 0xd6a43b;
+  return 0xe85d4a;
 }
 
 function calcularResumenPanel() {
@@ -99,11 +99,15 @@ function generarTextoCiudad(ciudad, ahora) {
 
     const sinScouts = users.length === 0;
     const cobKey = `${ciudad}__${mapa}`;
-    const ultimaActividad = state.coberturaDia[cobKey]?.ultimaActividad || null;
-    const minsVacio = sinScouts && ultimaActividad ? Math.floor((ahora - ultimaActividad) / 60000) : 0;
-    const alerta = sinScouts && minsVacio > 30;
+    const vacioDesde = state.mapasEnAlerta[cobKey]?.vacioDesde || null;
+    const minsVacio = sinScouts && vacioDesde ? Math.floor((ahora - vacioDesde) / 60000) : 0;
+    const alerta = sinScouts && minsVacio >= 30;
 
-    const prefijo = lleno ? "🔴 " : alerta ? "🚨 " : "- ";
+    const prefijo = lleno
+      ? `${textEmoji('FULL')} `
+      : alerta
+        ? `${textEmoji('ALERT')} `
+        : "- ";
     texto += `${prefijo}**${mapa}** → ${menciones}\n`;
   });
 
@@ -119,7 +123,7 @@ function generarEmbeds() {
   const descBase = "Usa el botón **Anotarse** para registrarte en un mapa.\nMáximo 5 scouts por mapa.";
   const descActivos = totalScoutsActivos > 0 ? `\n👥 **${totalScoutsActivos} scout${totalScoutsActivos > 1 ? "s" : ""} activo${totalScoutsActivos > 1 ? "s" : ""}**` : "";
   const encabezado = `${descBase}${descActivos}`;
-  const pie = "📋 Usa `!revisar` para revisar los mapas por 15 minutos.";
+  const pie = "📋 Usa `/revisar` o `!revisar` para abrir el panel móvil. Rondas de 20 minutos.";
   const embeds = [];
   const color = calcularColorEmbed();
 
@@ -135,7 +139,7 @@ function generarEmbeds() {
       .setDescription(descripcion);
 
     if (!esContinuacion) {
-      embed.setTitle("🗺️ Mapas del Día");
+      embed.setTitle(`${textEmoji('MAP')} Mapas del Día`);
       embed.setFooter({ text: `📊 ${pct}% cobertura (${mapasCubiertos}/${totalMapas}) • Actualizado ${hora} UTC` });
     }
 
@@ -145,7 +149,7 @@ function generarEmbeds() {
   for (const ciudad in state.mapas) {
     if (!state.mapas[ciudad] || state.mapas[ciudad].length === 0) continue;
     hayMapas = true;
-    const titulo = `${config.ICONOS_CIUDAD[ciudad] || "📍"} ${ciudad}`;
+    const titulo = `${cityTextEmoji(ciudad)} ${ciudad}`;
     const seccionCiudad = `${titulo}\n${generarTextoCiudad(ciudad, ahora).trim()}`;
     const candidato = `${bloqueActual}\n\n${seccionCiudad}`;
 

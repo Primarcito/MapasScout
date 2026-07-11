@@ -1,8 +1,8 @@
 const { MessageFlags } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
-const { canScout } = require('../permissions');
-const { guardarDatos, guardarScouts } = require('../data/persistence');
+const { canScout, canUseAdmin } = require('../permissions');
+const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { respuestaCiudades, respuestaMapas } = require('../components/panelComponents');
 const { componentesRevision } = require('../components/revisionComponents');
 const { generarEmbedRevision } = require('../embeds/revisionEmbed');
@@ -11,6 +11,7 @@ const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { verificarMapaVacio } = require('../utils/alerts');
 const { isVerificationButton, handleVerificationButton, cancelScoutVerification } = require('../utils/verification');
 const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
+const { tickRevisionRound } = require('../utils/revisionRounds');
 
 module.exports = async function handleButton(interaction) {
 
@@ -193,10 +194,12 @@ module.exports = async function handleButton(interaction) {
     const anotados = [];
     const mapasAnotados = [];
     const saltados = [];
+    const pendientes = [];
 
     for (const { ciudad, mapa } of lista) {
       if (!state.mapas[ciudad]?.includes(mapa)) {
         saltados.push(`${ciudad} - ${mapa} (eliminado)`);
+        pendientes.push({ ciudad, mapa });
         continue;
       }
 
@@ -207,23 +210,31 @@ module.exports = async function handleButton(interaction) {
 
       if (state.registros[ciudad][mapa].length >= 5) {
         saltados.push(`${ciudad} - ${mapa} (lleno)`);
+        pendientes.push({ ciudad, mapa });
         continue;
       }
 
       state.registros[ciudad][mapa].push(userId);
 
       if (!state.scoutsActivos[userId]) state.scoutsActivos[userId] = [];
-      state.scoutsActivos[userId].push({ ciudad, mapa, inicio: Date.now() });
+      const yaActivo = state.scoutsActivos[userId].some(e => e.ciudad === ciudad && e.mapa === mapa);
+      if (!yaActivo) {
+        state.scoutsActivos[userId].push({ ciudad, mapa, inicio: Date.now(), username: interaction.user.username });
+      }
 
       anotados.push(`${ciudad} - ${mapa}`);
       mapasAnotados.push({ ciudad, mapa });
     }
 
-    delete state.ultimosMapas[userId];
+    if (pendientes.length > 0) state.ultimosMapas[userId] = pendientes;
+    else delete state.ultimosMapas[userId];
 
     guardarDatos();
     guardarScouts();
     await actualizarPanel();
+    for (const { ciudad, mapa } of mapasAnotados) {
+      await verificarMapaVacio(ciudad, mapa);
+    }
     if (mapasAnotados.length > 0) {
       await sendScoutLog('ANOTADO', [
         `Scout: ${formatUser(userId, interaction.user.username)}`,
@@ -234,7 +245,7 @@ module.exports = async function handleButton(interaction) {
 
     let respuesta = "";
     if (anotados.length > 0) respuesta += `✅ Ahí estás de vuelta hermano:\n${anotados.map(m => `• ${m}`).join("\n")}`;
-    if (saltados.length > 0) respuesta += `\n⚠️ No se pudo:\n${saltados.map(m => `• ${m}`).join("\n")}`;
+    if (saltados.length > 0) respuesta += `\n⚠️ No se pudo (queda guardado para reintentar):\n${saltados.map(m => `• ${m}`).join("\n")}`;
     if (!respuesta) respuesta = "No se pudo volver a ningún mapa.";
 
     return interaction.reply({ content: respuesta, flags: MessageFlags.Ephemeral });
@@ -283,9 +294,19 @@ module.exports = async function handleButton(interaction) {
 
     const key = `${ciudad}__${mapa}`;
 
+    if (!state.revisionRound || ahora >= state.revisionRound.endsAt) {
+      await tickRevisionRound(ahora);
+      return interaction.editReply({ content: 'La ronda anterior acaba de cerrar. Marca el mapa nuevamente en la nueva ronda.' });
+    }
+
     // Verificar rol Scout
     if (!canScout(interaction.member)) {
       return interaction.editReply({ content: "Necesitas el rol Scout para marcar mapas." });
+    }
+
+    const asignados = state.revisionRound?.assignments?.[key]?.userIds || [];
+    if (!asignados.includes(userId) && !canUseAdmin(interaction.member)) {
+      return interaction.editReply({ content: "Solo un scout anotado en este mapa o un administrador puede revisarlo." });
     }
 
     // Obtener revisores actuales (max 2, orden de llegada)
@@ -301,6 +322,7 @@ module.exports = async function handleButton(interaction) {
 
     // Guardar sin timeout — queda hasta reset manual
     state.revisionEstado[key] = { revisadoEn: ahora, revisores };
+    guardarRevisionPanel();
 
     await interaction.editReply({ content: `✅ **${mapa}** marcado como revisado.` });
 

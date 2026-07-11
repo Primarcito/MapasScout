@@ -2,10 +2,11 @@ const { SlashCommandBuilder, MessageFlags, StringSelectMenuBuilder, ActionRowBui
 const state = require('../data/state');
 const config = require('../config');
 const { canManageMaps } = require('../permissions');
-const { guardarPanel, guardarDatos, guardarScouts } = require('../data/persistence');
+const { guardarPanel, guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
+const { sincronizarMensajeAlertas } = require('../utils/alerts');
 const { generarEmbeds } = require('../embeds/panelEmbed');
 const { componentesPanel } = require('../components/panelComponents');
-const { actualizarPanel } = require('../utils/panel');
+const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { cerrarScoutsActivos } = require('../utils/scouts');
 const { cancelScoutVerification } = require('../utils/verification');
 
@@ -96,11 +97,19 @@ module.exports = {
       for (const ciudad in state.registros) state.registros[ciudad] = {};
 
       state.ultimosMapas = {};
+      state.mapasEnAlerta = {};
       state.ultimaEdicion = null;
+      state.revisionEstado = {};
+      state.revisionRound = null;
+      state.revisionScores = {};
+      state.revisionRoundHistory = [];
 
       guardarDatos();
       guardarScouts();
+      guardarRevisionPanel();
       await actualizarPanel();
+      await actualizarRevision();
+      await sincronizarMensajeAlertas();
 
       return interaction.reply({
         content: "✅ Panel de mapas reseteado.",

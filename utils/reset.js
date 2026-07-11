@@ -1,7 +1,8 @@
 const state = require('../data/state');
-const { guardarDatos, guardarScouts } = require('../data/persistence');
+const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
+const { sincronizarMensajeAlertas } = require('./alerts');
 const { cerrarScoutsActivos } = require('./scouts');
-const { actualizarPanel } = require('./panel');
+const { actualizarPanel, actualizarRevision } = require('./panel');
 const { generarEmbedsHistorial } = require('../commands/scout');
 const { cancelScoutVerification } = require('./verification');
 const config = require('../config');
@@ -82,14 +83,22 @@ async function ejecutarReset() {
   }
 
   state.ultimosMapas = {};
+  state.mapasEnAlerta = {};
   state.ultimaEdicion = null;
   state.historialDia = [];
   state.coberturaDia = {};
   state.logAdmin = [];
+  state.revisionEstado = {};
+  state.revisionRound = null;
+  state.revisionScores = {};
+  state.revisionRoundHistory = [];
 
   guardarDatos();
   guardarScouts();
+  guardarRevisionPanel();
   await actualizarPanel();
+  await actualizarRevision();
+  await sincronizarMensajeAlertas();
 
   if (state.panelMessage) {
     try {

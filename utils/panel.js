@@ -111,22 +111,74 @@ async function crearPanelRevision() {
   }
 }
 
-async function actualizarRevision() {
-  try {
-    if (state.revisionMessage) {
-      await state.revisionMessage.edit({
-        embeds: [generarEmbedRevision()],
-        components: componentesRevision()
-      });
-    } else {
-      await crearPanelRevision();
+async function eliminarPanelRevisionMovil() {
+  if (state.revisionMobileMessage) {
+    try { await state.revisionMobileMessage.delete(); } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error('No se pudo borrar el panel móvil de revisión:', err);
     }
+  } else if (state.client && state.revisionMobileChannelId && state.revisionMobileMessageId) {
+    try {
+      const channel = await state.client.channels.fetch(state.revisionMobileChannelId);
+      const message = await channel?.messages.fetch(state.revisionMobileMessageId);
+      await message?.delete();
+    } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error('No se pudo recuperar el panel móvil anterior:', err);
+    }
+  }
+  state.revisionMobileMessage = null;
+  state.revisionMobileMessageId = null;
+  state.revisionMobileChannelId = null;
+  guardarRevisionPanel();
+}
+
+async function crearPanelRevisionMovil(channel) {
+  if (!channel?.send) return null;
+  if (channel.id === config.REVISION_CHANNEL_ID) {
+    await actualizarRevision();
+    return state.revisionMessage;
+  }
+  await eliminarPanelRevisionMovil();
+  const comps = componentesRevision();
+  const msg = await channel.send({
+    embeds: [generarEmbedRevision()],
+    components: comps.length > 0 ? comps : [],
+  });
+  state.revisionMobileMessage = msg;
+  state.revisionMobileMessageId = msg.id;
+  state.revisionMobileChannelId = msg.channel.id;
+  guardarRevisionPanel();
+  return msg;
+}
+
+async function actualizarRevision() {
+  const payload = { embeds: [generarEmbedRevision()], components: componentesRevision() };
+  try {
+    if (state.revisionMessage) await state.revisionMessage.edit(payload);
+    else await crearPanelRevision();
   } catch (err) {
-    console.error("Error actualizando panel revisión:", err);
+    console.error("Error actualizando panel revisión permanente:", err);
     state.revisionMessage = null;
     state.revisionMessageId = null;
     await crearPanelRevision();
   }
+
+  if (state.revisionMobileMessage) {
+    try {
+      await state.revisionMobileMessage.edit(payload);
+    } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error('Error actualizando panel móvil de revisión:', err);
+      state.revisionMobileMessage = null;
+      state.revisionMobileMessageId = null;
+      state.revisionMobileChannelId = null;
+      guardarRevisionPanel();
+    }
+  }
 }
 
-module.exports = { actualizarPanel, crearPanelRevision, actualizarRevision };
+module.exports = {
+  actualizarPanel,
+  crearPanelRevision,
+  crearPanelRevisionMovil,
+  eliminarPanelRevisionMovil,
+  actualizarRevision,
+};

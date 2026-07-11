@@ -1,19 +1,19 @@
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const config = require('./config');
 const state = require('./data/state');
-const { cargarDatos, cargarScouts, cargarPanel, cargarRevisionPanel, guardarPanel } = require('./data/persistence');
+const { cargarDatos, cargarScouts, cargarPanel, cargarRevisionPanel, guardarPanel, guardarRevisionPanel } = require('./data/persistence');
 const { registerCommands, getCommandsMap } = require('./commands/register');
 const handleButton = require('./handlers/buttonHandler');
 const handleSelect = require('./handlers/selectHandler');
 const handleModal = require('./handlers/modalHandler');
-const { generarEmbedRevision } = require('./embeds/revisionEmbed');
-const { componentesRevision } = require('./components/revisionComponents');
 const { programarReset } = require('./utils/reset');
-const { actualizarPanel, actualizarRevision, crearPanelRevision } = require('./utils/panel');
+const { actualizarPanel, actualizarRevision, crearPanelRevision, crearPanelRevisionMovil } = require('./utils/panel');
 const { startScoutVerification, isVerificationButton, handleVerificationScreenshotMessage } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
 const { sendCreatorMessage } = require('./utils/creatorMessages');
+const { sincronizarMensajeAlertas } = require('./utils/alerts');
+const { startRevisionRounds, startRevisionRound } = require('./utils/revisionRounds');
 
 /* ================= CARGAR DATOS PERSISTIDOS ================= */
 
@@ -21,6 +21,7 @@ cargarDatos();
 cargarScouts();
 cargarPanel();
 cargarRevisionPanel();
+if (!state.revisionRound) startRevisionRound();
 startApiServer();
 
 /* ================= CREAR CLIENT ================= */
@@ -73,22 +74,13 @@ client.on("messageCreate", async message => {
     return;
   }
 
-  if (message.content.toLowerCase() !== "!revisar") return;
+  if (message.content.trim().toLowerCase() !== "!revisar") return;
 
   if (!canScout(message.member)) {
     return message.reply("Necesitas el rol Scout para usar este comando.");
   }
 
-  const comps = componentesRevision();
-
-  if (comps.length === 0) {
-    return message.reply("No hay scouts anotados en ningún mapa.");
-  }
-
-  state.revisionMessage = await message.channel.send({
-    embeds: [generarEmbedRevision()],
-    components: comps
-  });
+  await crearPanelRevisionMovil(message.channel);
 
   try { await message.delete(); } catch (e) {}
 });
@@ -157,8 +149,33 @@ client.once("clientReady", async () => {
     console.error("Error recuperando canal de revisión:", err);
   }
 
+  if (state.revisionMobileChannelId && state.revisionMobileMessageId) {
+    try {
+      const mobileChannel = await client.channels.fetch(state.revisionMobileChannelId);
+      state.revisionMobileMessage = await mobileChannel.messages.fetch(state.revisionMobileMessageId);
+      console.log('Panel móvil de revisión recuperado');
+    } catch (err) {
+      state.revisionMobileMessage = null;
+      state.revisionMobileMessageId = null;
+      state.revisionMobileChannelId = null;
+      guardarRevisionPanel();
+    }
+  }
+
   programarReset();
   startScoutVerification();
+  startRevisionRounds();
+  await sincronizarMensajeAlertas();
+
+  // Mantener tiempos, prefijos de alerta y mensaje consolidado al día.
+  setInterval(async () => {
+    try {
+      await sincronizarMensajeAlertas();
+      await actualizarPanel({ recrearSiFalta: false });
+    } catch (err) {
+      console.error('Error actualizando alertas de mapas:', err);
+    }
+  }, 60 * 1000);
 
   // Auto-actualizar panel de revisión cada minuto
   setInterval(async () => {

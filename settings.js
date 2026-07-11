@@ -79,9 +79,15 @@ const SETTINGS = {
     mode: process.env.SCOUT_VERIFICATION_MODE || 'foto',
     maxActiveMinutes: Number(process.env.SCOUT_VERIFICATION_MAX_MINUTES || 240),
     graceMinutes: Number(process.env.SCOUT_VERIFICATION_GRACE_MINUTES || 10),
-    reviewMinutes: Number(process.env.SCOUT_VERIFICATION_REVIEW_MINUTES || 10),
     checkIntervalMinutes: Number(process.env.SCOUT_VERIFICATION_CHECK_MINUTES || 5),
     scoutReviewVotes: Number(process.env.SCOUT_VERIFICATION_SCOUT_VOTES || 3),
+  },
+
+  revision: {
+    roundMinutes: Number(process.env.MAP_REVISION_ROUND_MINUTES || 20),
+    warningMinutesBeforeEnd: Number(process.env.MAP_REVISION_WARNING_MINUTES || 5),
+    penaltyPerMiss: Number(process.env.MAP_REVISION_PENALTY || 0.05),
+    minimumMultiplier: Number(process.env.MAP_REVISION_MIN_MULTIPLIER || 0.70),
   },
 };
 

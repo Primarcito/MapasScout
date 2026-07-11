@@ -1,6 +1,6 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const state = require('../data/state');
-const config = require('../config');
+const { buttonEmoji, cityButtonEmoji } = require('../emojis');
 
 function componentesPanel() {
   return [
@@ -8,14 +8,17 @@ function componentesPanel() {
       new ButtonBuilder()
         .setCustomId("abrir_anotarse")
         .setLabel("Anotarse")
+        .setEmoji(buttonEmoji('JOIN'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("dropear_mapas")
         .setLabel("Dropear Mapas")
+        .setEmoji(buttonEmoji('DROP'))
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId("volver_mapas_panel")
         .setLabel("Volver a mis Mapas")
+        .setEmoji(buttonEmoji('RETURN'))
         .setStyle(ButtonStyle.Success)
     )
   ];
@@ -41,7 +44,8 @@ function respuestaCiudades() {
     fila.addComponents(
       new ButtonBuilder()
         .setCustomId(`ciudad_btn_${ciudad}`)
-        .setLabel(`${config.ICONOS_CIUDAD[ciudad] || "📍"} ${ciudad}`)
+        .setLabel(ciudad)
+        .setEmoji(cityButtonEmoji(ciudad))
         .setStyle(ButtonStyle.Secondary)
     );
   });
@@ -71,18 +75,21 @@ function respuestaMapas(ciudad, userId) {
     const lleno = users.length >= 5;
     const yaAnotado = users.includes(userId);
 
-    let label, style, disabled;
+    let label, style, disabled, emoji;
 
     if (yaAnotado) {
-      label = `✓ ${mapa}`;
+      label = mapa;
+      emoji = buttonEmoji('VERIFIED');
       style = ButtonStyle.Primary;
       disabled = false;
     } else if (lleno) {
-      label = `🔴 ${mapa}`;
+      label = mapa;
+      emoji = buttonEmoji('FULL');
       style = ButtonStyle.Secondary;
       disabled = true;
     } else {
       label = `${mapa} (${users.length}/5)`;
+      emoji = buttonEmoji('JOIN');
       style = ButtonStyle.Success;
       disabled = false;
     }
@@ -91,6 +98,7 @@ function respuestaMapas(ciudad, userId) {
       new ButtonBuilder()
         .setCustomId(`registro_idx_${ciudad}__${i}`)
         .setLabel(label)
+        .setEmoji(emoji)
         .setStyle(style)
         .setDisabled(disabled)
     );

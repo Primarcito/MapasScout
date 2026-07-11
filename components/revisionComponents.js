@@ -1,6 +1,6 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const state = require('../data/state');
-const config = require('../config');
+const { buttonEmoji, cityButtonEmoji } = require('../emojis');
 
 function contarMapasRevision() {
   let total = 0;
@@ -8,6 +8,15 @@ function contarMapasRevision() {
     if (state.mapas[ciudad] && state.mapas[ciudad].length > 0) total += state.mapas[ciudad].length;
   }
   return total;
+}
+
+function estaRevisado(estado) {
+  const round = state.revisionRound;
+  return Boolean(
+    estado?.revisores?.length > 0
+    && estado.revisadoEn >= (round?.startedAt || 0)
+    && estado.revisadoEn <= (round?.endsAt || Infinity)
+  );
 }
 
 function componentesRevisionCiudades() {
@@ -23,16 +32,16 @@ function componentesRevisionCiudades() {
     }
     const revisadosCiudad = state.mapas[ciudad].filter(mapa => {
       const key = `${ciudad}__${mapa}`;
-      return state.revisionEstado[key]?.revisores?.length > 0;
+      return estaRevisado(state.revisionEstado[key]);
     }).length;
     const totalCiudad = state.mapas[ciudad].length;
-    const emoji = config.ICONOS_CIUDAD[ciudad] || "📍";
-    const label = `${emoji} ${ciudad} (${revisadosCiudad}/${totalCiudad})`;
+    const label = `${ciudad} (${revisadosCiudad}/${totalCiudad})`;
 
     fila.addComponents(
       new ButtonBuilder()
         .setCustomId(`revision_ciudad_${ciudad}`)
         .setLabel(label)
+        .setEmoji(cityButtonEmoji(ciudad))
         .setStyle(revisadosCiudad === totalCiudad ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
     count++;
@@ -57,17 +66,15 @@ function componentesRevisionMapas(ciudad) {
     }
     const key = `${ciudad}__${mapa}`;
     const estado = state.revisionEstado[key];
-    const revisado = estado?.revisores?.length > 0;
-    const mins = revisado ? Math.floor((Date.now() - estado.revisadoEn) / 60000) : 0;
-    const expirado = revisado && mins >= 15;
-    const emoji = config.ICONOS_CIUDAD[ciudad] || "📍";
-    const label = revisado && !expirado ? `✅ ${emoji} ${mapa}` : `${emoji} ${mapa}`;
+    const revisado = estaRevisado(estado);
+    const label = mapa;
 
     fila.addComponents(
       new ButtonBuilder()
         .setCustomId(revisionCustomId(ciudad, index))
         .setLabel(label)
-        .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setEmoji(revisado ? buttonEmoji('VERIFIED') : cityButtonEmoji(ciudad))
+        .setStyle(revisado ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
     count++;
   });
@@ -109,17 +116,15 @@ function componentesRevision(ciudad = null) {
       }
       const key = `${c}__${mapa}`;
       const estado = state.revisionEstado[key];
-      const revisado = estado?.revisores?.length > 0;
-      const mins = revisado ? Math.floor((Date.now() - estado.revisadoEn) / 60000) : 0;
-      const expirado = revisado && mins >= 15;
-      const emoji = config.ICONOS_CIUDAD[c] || "📍";
-      const label = revisado && !expirado ? `✅ ${emoji} ${mapa}` : `${emoji} ${mapa}`;
+      const revisado = estaRevisado(estado);
+      const label = mapa;
 
       fila.addComponents(
         new ButtonBuilder()
           .setCustomId(revisionCustomId(c, index))
           .setLabel(label)
-          .setStyle(revisado && !expirado ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setEmoji(revisado ? buttonEmoji('VERIFIED') : cityButtonEmoji(c))
+          .setStyle(revisado ? ButtonStyle.Success : ButtonStyle.Secondary)
       );
       count++;
     });

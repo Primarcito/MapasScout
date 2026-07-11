@@ -4,7 +4,8 @@ const config = require('../config');
 const commandFiles = [
   require('./mapas'),
   require('./scout'),
-  require('./admin')
+  require('./admin'),
+  require('./revisar')
 ];
 
 async function registerCommands() {

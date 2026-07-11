@@ -2,8 +2,12 @@ const { MessageFlags } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
-const { actualizarPanel } = require('../utils/panel');
+const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { cancelScoutVerification } = require('../utils/verification');
+const { guardarUltimosMapas } = require('../utils/scouts');
+const { normalizarListaMapas } = require('../utils/mapNames');
+const { sincronizarMensajeAlertas } = require('../utils/alerts');
+const { startRevisionRound } = require('../utils/revisionRounds');
 
 module.exports = async function handleModal(interaction) {
 
@@ -55,6 +59,20 @@ module.exports = async function handleModal(interaction) {
       });
     }
 
+    for (const ciudad of Object.keys(cambios)) cambios[ciudad] = normalizarListaMapas(cambios[ciudad]);
+
+    // Guardar la foto completa de cada scout antes de tocar cualquier ciudad.
+    const afectados = new Set();
+    for (const ciudad of Object.keys(cambios)) {
+      for (const users of Object.values(state.registros[ciudad] || {})) {
+        for (const userId of users) afectados.add(userId);
+      }
+      for (const [userId, entradas] of Object.entries(state.scoutsActivos)) {
+        if ((entradas || []).some(e => e.ciudad === ciudad)) afectados.add(userId);
+      }
+    }
+    for (const userId of afectados) guardarUltimosMapas(userId);
+
     // Aplicar cambios
     const ciudadesEditadas = [];
     for (const ciudad in cambios) {
@@ -83,6 +101,9 @@ module.exports = async function handleModal(interaction) {
     guardarDatos();
     guardarScouts();
     await actualizarPanel();
+    await sincronizarMensajeAlertas();
+    startRevisionRound();
+    await actualizarRevision();
 
     return interaction.reply({
       content: `✅ Mapas cargados:\n${ciudadesEditadas.map(c => `• ${c}`).join("\n")}`,
@@ -95,7 +116,16 @@ module.exports = async function handleModal(interaction) {
   if (interaction.customId.startsWith("modal_")) {
     const ciudad = interaction.customId.replace("modal_", "");
     const texto = interaction.fields.getTextInputValue("mapas_input");
-    const nuevos = texto.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+    const nuevos = normalizarListaMapas(texto.split("\n"));
+
+    const afectados = new Set();
+    for (const users of Object.values(state.registros[ciudad] || {})) {
+      for (const userId of users) afectados.add(userId);
+    }
+    for (const [userId, entradas] of Object.entries(state.scoutsActivos)) {
+      if ((entradas || []).some(e => e.ciudad === ciudad)) afectados.add(userId);
+    }
+    for (const userId of afectados) guardarUltimosMapas(userId);
 
     // Limpiar scouts activos de esa ciudad
     for (const userId in state.scoutsActivos) {
@@ -120,6 +150,9 @@ module.exports = async function handleModal(interaction) {
     guardarDatos();
     guardarScouts();
     await actualizarPanel();
+    await sincronizarMensajeAlertas();
+    startRevisionRound();
+    await actualizarRevision();
 
     const confirmMsg = await interaction.reply({ content: `✅ Mapas de **${ciudad}** actualizados.`, flags: MessageFlags.Ephemeral, withResponse: true });
     setTimeout(async () => {
