@@ -33,12 +33,9 @@ function payloadAjusteMultiplier(userId) {
       .setLabel('Valor exacto')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId(`revision_mult_auto_${userId}`)
-      .setLabel('Automático')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`revision_mult_full_${userId}`)
-      .setLabel('Restaurar x1.00')
+      .setCustomId('revision_regenerate_summary')
+      .setLabel('Regenerar resumen')
+      .setEmoji('♻️')
       .setStyle(ButtonStyle.Secondary)
   );
 

@@ -59,7 +59,7 @@ module.exports = async function handleButton(interaction) {
     return interaction.showModal(modal);
   }
 
-  const multiplierButton = /^revision_mult_(down|up|exact|auto|full)_(\d+)$/.exec(interaction.customId);
+  const multiplierButton = /^revision_mult_(down|up|exact)_(\d+)$/.exec(interaction.customId);
   if (multiplierButton) {
     if (!canUseAdmin(interaction.member)) {
       return interaction.reply({ content: 'No tienes permiso de admin.', flags: MessageFlags.Ephemeral });
@@ -87,15 +87,9 @@ module.exports = async function handleButton(interaction) {
       return interaction.showModal(modal);
     }
 
-    if (action === 'auto') {
-      delete score.manualMultiplier;
-    } else if (action === 'full') {
-      score.manualMultiplier = 1;
-    } else {
-      const delta = action === 'down' ? -0.05 : 0.05;
-      const minimum = revisionConfig().minimumMultiplier;
-      score.manualMultiplier = Math.max(minimum, Math.min(1, Math.round((getRevisionMultiplier(userId) + delta) * 100) / 100));
-    }
+    const delta = action === 'down' ? -0.05 : 0.05;
+    const minimum = revisionConfig().minimumMultiplier;
+    score.manualMultiplier = Math.max(minimum, Math.min(1, Math.round((getRevisionMultiplier(userId) + delta) * 100) / 100));
     guardarRevisionPanel();
     return interaction.update({ content: null, ...payloadAjusteMultiplier(userId) });
   }
