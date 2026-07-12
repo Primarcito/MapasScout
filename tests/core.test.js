@@ -94,7 +94,7 @@ test('el panel nunca muestra alerta roja si el mapa tiene un scout', () => {
 });
 
 test('los emotes cargados usan sus IDs y aceptan una sobrescritura', () => {
-  assert.equal(cityTextEmoji('Lymhurst'), '<:mapas_lymhurst:1525624889216733256>');
+  assert.equal(cityTextEmoji('Lymhurst'), '<:mapas_lymhurst:1525672651853398106>');
   assert.equal(cityButtonEmoji('Ciudad Desconocida'), '📍');
 
   process.env.EMOJI_MAPAS_LYMHURST_ID = '123456789';
@@ -108,6 +108,28 @@ test('los emotes cargados usan sus IDs y aceptan una sobrescritura', () => {
 
 test('los 16 emotes tienen IDs de Discord únicos y válidos', () => {
   const { DEFINITIONS } = require('../emojis');
+  const expectedIds = {
+    MAP: '1525672654739079178',
+    JOIN: '1525672650054303776',
+    DROP: '1525672642332594251',
+    RETURN: '1525672658954489876',
+    REVIEW: '1525672660863029402',
+    ACTIVE: '1525672626700288130',
+    EMPTY: '1525672644245061722',
+    FULL: '1525672648309346334',
+    ALERT: '1525672637538504815',
+    VERIFIED: '1525672664834900148',
+    LYMHURST: '1525672651853398106',
+    BRIDGEWATCH: '1525672640260341801',
+    FORT_STERLING: '1525672646392418524',
+    THETFORD: '1525672662968303616',
+    MARTLOCK: '1525672657121706114',
+    ZONA_ROJA: '1525672666604769381',
+  };
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(DEFINITIONS).map(([key, definition]) => [key, definition.id])),
+    expectedIds
+  );
   const ids = Object.values(DEFINITIONS).map(definition => definition.id);
   assert.equal(ids.length, 16);
   assert.equal(new Set(ids).size, 16);

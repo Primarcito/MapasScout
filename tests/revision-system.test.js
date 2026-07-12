@@ -8,7 +8,13 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mapasbot-revision-'));
 process.env.DATA_DIR = tempDir;
 
 const state = require('../data/state');
-const { applyRoundScores, getRevisionMultiplier, finishRevisionRound, beginRevisionRound } = require('../utils/revisionRounds');
+const {
+  applyRoundScores,
+  getRevisionMultiplier,
+  finishRevisionRound,
+  beginRevisionRound,
+  discardResidualRevisionState,
+} = require('../utils/revisionRounds');
 const { calculatePhotoPenaltyMs, rollbackProvisionalCredit } = require('../utils/verification');
 const { crearPanelRevisionMovil, actualizarRevision } = require('../utils/panel');
 const { componentesRevision } = require('../components/revisionComponents');
@@ -85,13 +91,28 @@ test('iniciar revisión manual etiqueta al rol una sola vez durante la ronda', a
   assert.match(sent[0].content, /<@&1435778823743340651>/);
 });
 
-test('los botones de revisión se muestran alfabéticamente sin perder su índice real', () => {
+test('el arranque descarta una ronda residual sin borrar puntuaciones ni historial', () => {
+  state.revisionRound = { id: 'residuo', startedAt: 1, endsAt: Date.now() + 600_000 };
+  state.revisionEstado = { mapa: { revisadoEn: 2, revisores: ['1'] } };
+  state.revisionScores = { 1: { multiplier: 0.95, misses: 1 } };
+  state.revisionRoundHistory = [{ id: 'anterior' }];
+
+  assert.equal(discardResidualRevisionState(), true);
+  assert.equal(state.revisionRound, null);
+  assert.deepEqual(state.revisionEstado, {});
+  assert.equal(state.revisionScores['1'].multiplier, 0.95);
+  assert.deepEqual(state.revisionRoundHistory, [{ id: 'anterior' }]);
+  assert.equal(discardResidualRevisionState(), false);
+});
+
+test('los botones de revisión se agrupan por ciudad y respetan el orden cargado', () => {
   state.mapas = { Lymhurst: ['Zulu Map', 'Alpha Map'], Thetford: ['Beta Map'] };
   state.revisionEstado = {};
   state.revisionRound = null;
   const buttons = componentesRevision().flatMap(row => row.components);
-  assert.deepEqual(buttons.map(button => button.data.label), ['Alpha Map', 'Beta Map', 'Zulu Map']);
-  assert.equal(buttons[0].data.custom_id, 'revision_idx_Lymhurst__1');
+  assert.deepEqual(buttons.map(button => button.data.label), ['Zulu Map', 'Alpha Map', 'Beta Map']);
+  assert.equal(buttons[0].data.custom_id, 'revision_idx_Lymhurst__0');
+  assert.equal(buttons[0].data.disabled, true);
 });
 
 test('un multiplicador manual prevalece sin perder el cálculo automático', () => {

@@ -27,7 +27,9 @@ function generarEmbedRevision() {
     .setTitle(`${textEmoji('REVIEW')} Revisión de Mapas • ${revisadosRev}/${totalRev}`)
     .setDescription(
       `[${bar}] ${Math.round((revisadosRev / Math.max(totalRev, 1)) * 100)}%` +
-      (round?.endsAt ? `\n⏳ La ronda cierra <t:${Math.floor(round.endsAt / 1000)}:R>.` : '')
+      (round?.endsAt
+        ? `\n⏳ La ronda cierra <t:${Math.floor(round.endsAt / 1000)}:R>.`
+        : '\n⏸️ No hay una ronda activa. Usa `/revisar` para iniciar una.')
     )
     .setColor(0xe91e63)
     .setFooter({ text: `Actualizado • ${new Date().toLocaleString('es-AR', { timeZone: 'UTC' })} UTC` });

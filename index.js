@@ -162,7 +162,11 @@ client.once("clientReady", async () => {
 
   programarReset();
   startScoutVerification();
-  startRevisionRounds();
+  const discardedRevision = startRevisionRounds();
+  if (discardedRevision) {
+    console.log('Ronda residual descartada al iniciar; se esperará a /revisar.');
+    await actualizarRevision();
+  }
   await sincronizarMensajeAlertas();
 
   // Mantener tiempos, prefijos de alerta y mensaje consolidado al día.

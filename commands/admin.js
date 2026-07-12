@@ -17,6 +17,27 @@ function usuariosConMultiplicador() {
   return [...ids];
 }
 
+async function resolverNombreScout(interaction, userId) {
+  const cachedMember = interaction.guild.members.cache.get(userId);
+  if (cachedMember) {
+    return cachedMember.displayName || cachedMember.user.globalName || cachedMember.user.username;
+  }
+
+  try {
+    const member = await interaction.guild.members.fetch(userId);
+    return member.displayName || member.user.globalName || member.user.username;
+  } catch (err) {
+    // Puede ser un scout que ya no está en el servidor; intentar resolver su usuario global.
+  }
+
+  try {
+    const user = await interaction.client.users.fetch(userId);
+    return user.globalName || user.username;
+  } catch (err) {
+    return userId;
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("admin")
@@ -92,20 +113,20 @@ module.exports = {
         return interaction.reply({ content: "No hay scouts registrados.", flags: MessageFlags.Ephemeral });
       }
 
-      const opciones = Array.from(scouts).slice(0, 25).map(id => ({
-        label: interaction.guild.members.cache.get(id)?.user?.username || id,
-        value: id
-      }));
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const opciones = await Promise.all(Array.from(scouts).slice(0, 25).map(async id => ({
+        label: (await resolverNombreScout(interaction, id)).slice(0, 100),
+        value: id,
+      })));
 
       const select = new StringSelectMenuBuilder()
         .setCustomId("select_limpiar_scout")
         .setPlaceholder("Selecciona scout a remover")
         .addOptions(opciones);
 
-      return interaction.reply({
+      return interaction.editReply({
         content: "Selecciona el scout a remover:",
-        components: [new ActionRowBuilder().addComponents(select)],
-        flags: MessageFlags.Ephemeral
+        components: [new ActionRowBuilder().addComponents(select)]
       });
     }
 
@@ -211,17 +232,19 @@ module.exports = {
     }
 
     if (sub === "multiplicadores") {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const ids = usuariosConMultiplicador();
-      const miembros = ids.map(id => {
-        const username = interaction.guild.members.cache.get(id)?.user?.username || id;
+      const miembros = await Promise.all(ids.map(async id => {
+        const username = await resolverNombreScout(interaction, id);
         const score = state.revisionScores[id] || {};
         return { id, username, score, multiplier: getRevisionMultiplier(id) };
-      }).sort((a, b) => a.username.localeCompare(b.username, 'es', { sensitivity: 'base' }));
+      }));
+      miembros.sort((a, b) => a.username.localeCompare(b.username, 'es', { sensitivity: 'base' }));
 
       const description = miembros.length > 0
         ? miembros.map(item => {
-            const manual = Number.isFinite(Number(item.score.manualMultiplier)) ? ' · manual' : '';
-            return `• <@${item.id}> — **x${item.multiplier.toFixed(2)}**${manual} · ${item.score.misses || 0} fallos`;
+            const modo = Number.isFinite(Number(item.score.manualMultiplier)) ? 'manual' : 'automático';
+            return `• **${item.username}** — **x${item.multiplier.toFixed(2)}** · ${modo} · ${item.score.misses || 0} fallos`;
           }).join('\n').slice(0, 3900)
         : 'Todavía no hay scouts con puntuación registrada.';
 
@@ -237,14 +260,14 @@ module.exports = {
           .setCustomId('select_revision_multiplier')
           .setPlaceholder('Selecciona un scout para ajustar')
           .addOptions(miembros.slice(0, 25).map(item => ({
-            label: `${item.username} · x${item.multiplier.toFixed(2)}`.slice(0, 100),
+            label: item.username.slice(0, 100),
             value: item.id,
-            description: Number.isFinite(Number(item.score.manualMultiplier)) ? 'Ajuste manual activo' : 'Cálculo automático',
+            description: `${Number.isFinite(Number(item.score.manualMultiplier)) ? 'Manual' : 'Automático'} · x${item.multiplier.toFixed(2)} · ${item.score.misses || 0} fallos`.slice(0, 100),
           })));
         components.push(new ActionRowBuilder().addComponents(select));
       }
 
-      return interaction.reply({ embeds: [embed], components, flags: MessageFlags.Ephemeral });
+      return interaction.editReply({ embeds: [embed], components });
     }
 
     /* ===== RESET REVISION ===== */

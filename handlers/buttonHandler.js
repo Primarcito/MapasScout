@@ -294,9 +294,13 @@ module.exports = async function handleButton(interaction) {
 
     const key = `${ciudad}__${mapa}`;
 
-    if (!state.revisionRound || ahora >= state.revisionRound.endsAt) {
+    if (!state.revisionRound) {
+      return interaction.editReply({ content: 'No hay una ronda activa. Usa `/revisar` o `!revisar` para iniciar una.' });
+    }
+
+    if (ahora >= state.revisionRound.endsAt) {
       await tickRevisionRound(ahora);
-      return interaction.editReply({ content: 'La ronda anterior acaba de cerrar. Marca el mapa nuevamente en la nueva ronda.' });
+      return interaction.editReply({ content: 'La ronda acaba de cerrar. Usa `/revisar` o `!revisar` para iniciar la siguiente.' });
     }
 
     // Verificar rol Scout

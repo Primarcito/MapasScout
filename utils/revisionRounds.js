@@ -66,6 +66,7 @@ async function beginRevisionRound(now = Date.now()) {
   } catch (err) {
     console.error('No se pudo avisar al rol Scout sobre la ronda:', err);
   }
+  await actualizarRevision();
   return { round, created: true };
 }
 
@@ -217,17 +218,25 @@ async function tickRevisionRound(now = Date.now()) {
   }
 }
 
+function discardResidualRevisionState() {
+  const hadResidualState = Boolean(
+    state.revisionRound
+    || Object.keys(state.revisionEstado || {}).length > 0
+  );
+  state.revisionRound = null;
+  state.revisionEstado = {};
+  if (hadResidualState) guardarRevisionPanel();
+  return hadResidualState;
+}
+
 function startRevisionRounds() {
   if (intervalId) clearInterval(intervalId);
-  if (state.revisionRound?.endsAt <= Date.now()) {
-    // No penalizar ni reemplazar una ronda que venció mientras el bot estuvo desconectado.
-    state.revisionRound = null;
-    state.revisionEstado = {};
-    guardarRevisionPanel();
-  }
+  // Un redeploy nunca debe reactivar rondas, avisos ni marcas anteriores.
+  const discarded = discardResidualRevisionState();
   intervalId = setInterval(() => {
     tickRevisionRound().catch(err => console.error('Error procesando ronda de revisión:', err));
   }, 30 * 1000);
+  return discarded;
 }
 
 function resetRevisionRounds(now = Date.now()) {
@@ -242,6 +251,7 @@ module.exports = {
   revisionConfig,
   startRevisionRound,
   beginRevisionRound,
+  discardResidualRevisionState,
   startRevisionRounds,
   tickRevisionRound,
   finishRevisionRound,

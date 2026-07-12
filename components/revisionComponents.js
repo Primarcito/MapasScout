@@ -42,6 +42,7 @@ function componentesRevisionCiudades() {
         .setCustomId(`revision_ciudad_${ciudad}`)
         .setLabel(label)
         .setEmoji(cityButtonEmoji(ciudad))
+        .setDisabled(!state.revisionRound)
         .setStyle(revisadosCiudad === totalCiudad ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
     count++;
@@ -54,20 +55,12 @@ function revisionCustomId(ciudad, index) {
   return `revision_idx_${ciudad}__${index}`;
 }
 
-function ordenarMapas(items) {
-  return [...items].sort((a, b) => a.mapa.localeCompare(b.mapa, 'es', { sensitivity: 'base' }));
-}
-
 function componentesRevisionMapas(ciudad) {
   const filas = [];
   let fila = new ActionRowBuilder();
   let count = 0;
 
-  const mapasOrdenados = ordenarMapas(
-    (state.mapas[ciudad] || []).map((mapa, index) => ({ mapa, index }))
-  );
-
-  mapasOrdenados.forEach(({ mapa, index }) => {
+  (state.mapas[ciudad] || []).forEach((mapa, index) => {
     if (count % 5 === 0 && count !== 0) {
       filas.push(fila);
       fila = new ActionRowBuilder();
@@ -82,6 +75,7 @@ function componentesRevisionMapas(ciudad) {
         .setCustomId(revisionCustomId(ciudad, index))
         .setLabel(label)
         .setEmoji(revisado ? buttonEmoji('VERIFIED') : cityButtonEmoji(ciudad))
+        .setDisabled(!state.revisionRound)
         .setStyle(revisado ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
     count++;
@@ -115,13 +109,9 @@ function componentesRevision(ciudad = null) {
   let fila = new ActionRowBuilder();
   let count = 0;
 
-  const mapasOrdenados = ordenarMapas(
-    Object.entries(state.mapas).flatMap(([c, mapas]) =>
-      (mapas || []).map((mapa, index) => ({ c, mapa, index }))
-    )
-  );
-
-  mapasOrdenados.forEach(({ c, mapa, index }) => {
+  for (const c in state.mapas) {
+    if (!state.mapas[c] || state.mapas[c].length === 0) continue;
+    state.mapas[c].forEach((mapa, index) => {
       if (count % 5 === 0 && count !== 0) {
         filas.push(fila);
         fila = new ActionRowBuilder();
@@ -136,10 +126,12 @@ function componentesRevision(ciudad = null) {
           .setCustomId(revisionCustomId(c, index))
           .setLabel(label)
           .setEmoji(revisado ? buttonEmoji('VERIFIED') : cityButtonEmoji(c))
+          .setDisabled(!state.revisionRound)
           .setStyle(revisado ? ButtonStyle.Success : ButtonStyle.Secondary)
       );
       count++;
-  });
+    });
+  }
   if (count > 0) filas.push(fila);
   return filas;
 }
