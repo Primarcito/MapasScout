@@ -1,6 +1,6 @@
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, MessageFlags } = require('discord.js');
 const state = require('../data/state');
-const { guardarDatos, guardarScouts } = require('../data/persistence');
+const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel } = require('../utils/panel');
 const { cancelScoutVerification } = require('../utils/verification');
@@ -18,6 +18,18 @@ module.exports = async function handleSelect(interaction) {
     }
 
     const userId = interaction.values[0];
+    const member = interaction.members?.get(userId) || interaction.guild?.members?.cache?.get(userId);
+    const score = state.revisionScores[userId] || {};
+    score.aliases = [...new Set([
+      ...(score.aliases || []),
+      score.username,
+      member?.displayName,
+      member?.user?.username,
+      member?.user?.globalName,
+    ].filter(Boolean))];
+    score.username = member?.displayName || score.username || member?.user?.username || userId;
+    state.revisionScores[userId] = score;
+    guardarRevisionPanel();
     return interaction.update({
       content: null,
       ...payloadAjusteMultiplier(userId),

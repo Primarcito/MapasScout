@@ -17,7 +17,14 @@ function normalizeIdentity(value) {
 function multiplierForSummaryName(name, existing = 1) {
   const normalized = normalizeIdentity(name);
   for (const [userId, score] of Object.entries(state.revisionScores || {})) {
-    if (normalizeIdentity(score?.username) === normalized) return getRevisionMultiplier(userId);
+    const identities = new Set([score?.username, ...(score?.aliases || [])]);
+    for (const entry of [...(state.historialScouts || []), ...(state.historialDia || [])]) {
+      if (String(entry?.userId) === String(userId)) identities.add(entry?.username);
+    }
+    for (const entry of state.scoutsActivos?.[userId] || []) identities.add(entry?.username);
+    if ([...identities].some(identity => normalizeIdentity(identity) === normalized)) {
+      return getRevisionMultiplier(userId);
+    }
   }
   return Math.max(0.70, Math.min(1, Number(existing) || 1));
 }

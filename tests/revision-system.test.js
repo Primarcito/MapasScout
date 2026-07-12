@@ -147,6 +147,17 @@ test('repara un resumen antiguo sin puntos y conserva el multiplicador descenden
   assert.equal(repaired.description, '🥇 **sozapysch** — 12h 46m · x0.95 · 13 mapas · 🟢');
 });
 
+test('regenerar reconoce el nombre histórico aunque el panel guarde el nombre visible', () => {
+  state.revisionScores = {
+    1: { username: 'Soza', multiplier: 1, manualMultiplier: 0.85 },
+  };
+  state.historialScouts = [{ userId: '1', username: 'sozapysch' }];
+  state.historialDia = [];
+  const original = '🥇 **sozapysch** — 12h 46m · x1.00 · 13 mapas · 🟢';
+  const repaired = repairSummaryDescription(original);
+  assert.equal(repaired.description, '🥇 **sozapysch** — 12h 46m · x0.85 · 13 mapas · 🟢');
+});
+
 test('el resumen de Mapas no publica puntos ni aplica la escala de RankingBot', () => {
   const now = Date.now();
   state.historialDia = [{
