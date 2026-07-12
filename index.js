@@ -61,7 +61,9 @@ client.on("interactionCreate", async interaction => {
   }
 
   if (interaction.isButton()) return handleButton(interaction);
-  if (interaction.isStringSelectMenu()) return handleSelect(interaction);
+  if (interaction.isStringSelectMenu() || interaction.isUserSelectMenu()) {
+    return handleSelect(interaction);
+  }
   if (interaction.isModalSubmit()) return handleModal(interaction);
 });
 
