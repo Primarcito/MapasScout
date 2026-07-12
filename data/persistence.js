@@ -108,6 +108,9 @@ function guardarRevisionPanel() {
       round: state.revisionRound,
       scores: state.revisionScores,
       history: state.revisionRoundHistory,
+      lastArchivedSummaryMessageId: state.lastArchivedSummaryMessageId,
+      lastArchivedSummaryChannelId: state.lastArchivedSummaryChannelId,
+      completedSummaryRegenerations: state.completedSummaryRegenerations,
     }, null, 2)
   );
 }
@@ -123,6 +126,9 @@ function cargarRevisionPanel() {
     state.revisionRound = data.round || null;
     state.revisionScores = data.scores || {};
     state.revisionRoundHistory = data.history || [];
+    state.lastArchivedSummaryMessageId = data.lastArchivedSummaryMessageId || null;
+    state.lastArchivedSummaryChannelId = data.lastArchivedSummaryChannelId || null;
+    state.completedSummaryRegenerations = data.completedSummaryRegenerations || [];
   }
 }
 

@@ -82,8 +82,10 @@ function isReviewed(key, round = state.revisionRound) {
 function getRevisionMultiplier(userId) {
   const score = state.revisionScores[userId] || {};
   const manual = Number(score.manualMultiplier);
-  if (Number.isFinite(manual) && manual > 0) return manual;
-  return Number(score.multiplier) || 1;
+  const value = Number.isFinite(manual) && manual > 0
+    ? manual
+    : (Number(score.multiplier) || 1);
+  return Math.max(revisionConfig().minimumMultiplier, Math.min(1, value));
 }
 
 async function getRevisionChannel() {

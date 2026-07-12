@@ -9,8 +9,36 @@ const { normalizarListaMapas } = require('../utils/mapNames');
 const { sincronizarMensajeAlertas } = require('../utils/alerts');
 const { canUseAdmin } = require('../permissions');
 const { getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
+const { regenerateSummaryMessage } = require('../utils/dailySummary');
 
 module.exports = async function handleModal(interaction) {
+
+  /* ===== MODAL: REGENERAR RESUMEN ===== */
+
+  if (interaction.customId === 'modal_revision_regenerate_summary') {
+    if (!canUseAdmin(interaction.member)) {
+      return interaction.reply({ content: 'No tienes permiso de admin.', flags: MessageFlags.Ephemeral });
+    }
+    const messageId = interaction.fields.getTextInputValue('summary_message_id').trim();
+    if (!/^\d{17,20}$/.test(messageId)) {
+      return interaction.reply({ content: 'El ID del mensaje no es válido.', flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const result = await regenerateSummaryMessage(messageId);
+      const url = `https://discord.com/channels/${interaction.guildId}/${result.replacement.channel.id}/${result.replacement.id}`;
+      const deletion = result.deleted
+        ? 'El resumen anterior fue eliminado.'
+        : 'El reemplazo se publicó, pero no pude eliminar el mensaje anterior.';
+      return interaction.editReply(
+        `✅ [Resumen regenerado](${url}) sin puntos de Mapas y con los multiplicadores actuales. ${deletion}\n` +
+        'Si RankingBot ya tenía un conteo del mensaje anterior, recházalo y genera uno nuevo con este ID.'
+      );
+    } catch (err) {
+      return interaction.editReply(`No se pudo regenerar el resumen: ${err.message || err}`);
+    }
+  }
 
   /* ===== MODAL: MULTIPLICADOR MANUAL ===== */
 

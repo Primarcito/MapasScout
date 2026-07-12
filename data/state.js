@@ -59,5 +59,8 @@ module.exports = {
   revisionEstado: {},
   revisionRound: null,
   revisionScores: {},
-  revisionRoundHistory: []
+  revisionRoundHistory: [],
+  lastArchivedSummaryMessageId: null,
+  lastArchivedSummaryChannelId: null,
+  completedSummaryRegenerations: [],
 };

@@ -6,7 +6,7 @@ const { actualizarPanel } = require('../utils/panel');
 const { cancelScoutVerification } = require('../utils/verification');
 const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
 const { canUseAdmin } = require('../permissions');
-const { getRevisionMultiplier } = require('../utils/revisionRounds');
+const { payloadAjusteMultiplier } = require('../components/revisionMultiplierComponents');
 
 module.exports = async function handleSelect(interaction) {
 
@@ -18,22 +18,10 @@ module.exports = async function handleSelect(interaction) {
     }
 
     const userId = interaction.values[0];
-    const score = state.revisionScores[userId] || {};
-    const modal = new ModalBuilder()
-      .setCustomId(`modal_revision_multiplier_${userId}`)
-      .setTitle('Ajustar multiplicador');
-
-    const input = new TextInputBuilder()
-      .setCustomId('multiplier_input')
-      .setLabel('Entre 0.70 y 1.00, o auto')
-      .setStyle(TextInputStyle.Short)
-      .setValue(Number.isFinite(Number(score.manualMultiplier))
-        ? Number(score.manualMultiplier).toFixed(2)
-        : getRevisionMultiplier(userId).toFixed(2))
-      .setRequired(true);
-
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-    return interaction.showModal(modal);
+    return interaction.update({
+      content: null,
+      ...payloadAjusteMultiplier(userId),
+    });
   }
 
   /* ===== EDITAR CIUDAD ===== */

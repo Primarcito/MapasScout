@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, MessageFlags, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const state = require('../data/state');
 const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
@@ -223,6 +223,7 @@ module.exports = {
       }
 
       state.revisionScores[usuario.id] = score;
+      score.username = usuario.globalName || usuario.username;
       guardarRevisionPanel();
       const modo = Number.isFinite(Number(score.manualMultiplier)) ? 'manual' : 'automático';
       return interaction.reply({
@@ -234,11 +235,15 @@ module.exports = {
     if (sub === "multiplicadores") {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const ids = usuariosConMultiplicador();
-      const miembros = await Promise.all(ids.map(async id => {
+      const miembrosTodos = await Promise.all(ids.map(async id => {
         const username = await resolverNombreScout(interaction, id);
         const score = state.revisionScores[id] || {};
+        score.username = username;
+        state.revisionScores[id] = score;
         return { id, username, score, multiplier: getRevisionMultiplier(id) };
       }));
+      guardarRevisionPanel();
+      const miembros = miembrosTodos.filter(item => item.multiplier < 1);
       miembros.sort((a, b) => a.username.localeCompare(b.username, 'es', { sensitivity: 'base' }));
 
       const description = miembros.length > 0
@@ -246,13 +251,13 @@ module.exports = {
             const modo = Number.isFinite(Number(item.score.manualMultiplier)) ? 'manual' : 'automático';
             return `• **${item.username}** — **x${item.multiplier.toFixed(2)}** · ${modo} · ${item.score.misses || 0} fallos`;
           }).join('\n').slice(0, 3900)
-        : 'Todavía no hay scouts con puntuación registrada.';
+        : 'No hay scouts penalizados. Todos están actualmente en **x1.00**.';
 
       const embed = new EmbedBuilder()
         .setTitle('Multiplicadores de scouts')
         .setColor(0x1f9d8a)
         .setDescription(description)
-        .setFooter({ text: 'El ajuste manual se mantiene hasta elegir “automático”.' });
+        .setFooter({ text: 'Solo aparecen scouts por debajo de x1.00. El ajuste manual se mantiene hasta elegir “automático”.' });
 
       const components = [];
       if (miembros.length > 0) {
@@ -266,6 +271,14 @@ module.exports = {
           })));
         components.push(new ActionRowBuilder().addComponents(select));
       }
+
+      components.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('revision_regenerate_summary')
+          .setLabel('Regenerar resumen')
+          .setEmoji('♻️')
+          .setStyle(ButtonStyle.Primary)
+      ));
 
       return interaction.editReply({ embeds: [embed], components });
     }

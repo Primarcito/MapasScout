@@ -18,6 +18,8 @@ const {
 const { calculatePhotoPenaltyMs, rollbackProvisionalCredit } = require('../utils/verification');
 const { crearPanelRevisionMovil, actualizarRevision } = require('../utils/panel');
 const { componentesRevision } = require('../components/revisionComponents');
+const { repairSummaryDescription, regenerateSummaryMessage } = require('../utils/dailySummary');
+const { generarEmbedsHistorial } = require('../commands/scout');
 const { cerrarScoutsActivos, descartarScoutsActivos } = require('../utils/scouts');
 const { guardarScouts, cargarScouts } = require('../data/persistence');
 
@@ -124,6 +126,76 @@ test('un multiplicador manual prevalece sin perder el cálculo automático', () 
   assert.equal(state.revisionScores['1'].multiplier, 0.90);
   delete state.revisionScores['1'].manualMultiplier;
   assert.equal(getRevisionMultiplier('1'), 0.90);
+});
+
+test('el multiplicador de revisión nunca aumenta la puntuación', () => {
+  state.revisionScores = {
+    alto: { multiplier: 1, manualMultiplier: 1.25 },
+    bajo: { multiplier: 0.50 },
+  };
+  assert.equal(getRevisionMultiplier('alto'), 1);
+  assert.equal(getRevisionMultiplier('bajo'), 0.70);
+});
+
+test('repara un resumen antiguo sin puntos y conserva el multiplicador descendente', () => {
+  state.revisionScores = {
+    1: { username: 'sozapysch', multiplier: 1, manualMultiplier: 0.95 },
+  };
+  const original = '🥇 **sozapysch** — **766 pts** · 12h 46m · x1.00 · 13 mapas · 🟢';
+  const repaired = repairSummaryDescription(original);
+  assert.equal(repaired.changed, true);
+  assert.equal(repaired.description, '🥇 **sozapysch** — 12h 46m · x0.95 · 13 mapas · 🟢');
+});
+
+test('el resumen de Mapas no publica puntos ni aplica la escala de RankingBot', () => {
+  const now = Date.now();
+  state.historialDia = [{
+    userId: '1', username: 'Scout', ciudad: 'Lymhurst', mapa: 'Mapa Uno', inicio: now - 60 * 60_000, fin: now,
+  }];
+  state.scoutsActivos = {};
+  state.mapas = { Lymhurst: ['Mapa Uno'] };
+  state.registros = { Lymhurst: { 'Mapa Uno': ['1'] } };
+  state.coberturaDia = {};
+  state.revisionScores = { 1: { multiplier: 0.95, username: 'Scout' } };
+  const description = generarEmbedsHistorial()[0].data.description;
+  assert.doesNotMatch(description, /\bpts\b/i);
+  assert.match(description, /1h 0m · x0\.95 · 1 mapa/);
+});
+
+test('regenerar resumen publica el reemplazo antes de borrar el mensaje anterior', async () => {
+  const events = [];
+  const channel = {
+    id: 'archivo',
+    messages: {
+      async fetch() {
+        return {
+          embeds: [{
+            title: '📊 Resumen del Día',
+            description: '🥇 **Scout** — **60 pts** · 1h 0m · x1.00 · 3 mapas · ⚪',
+            toJSON() { return { title: this.title, description: this.description }; },
+          }],
+          async delete() { events.push('delete'); },
+        };
+      },
+    },
+    async send(payload) {
+      events.push('send');
+      assert.doesNotMatch(payload.embeds[0].data.description, /\bpts\b/i);
+      return { id: 'nuevo', channel };
+    },
+  };
+  state.revisionScores = {};
+  state.completedSummaryRegenerations = [];
+  state.client = { channels: { async fetch() { return channel; } } };
+  const result = await regenerateSummaryMessage('1525803909573116065');
+  assert.deepEqual(events, ['send', 'delete']);
+  assert.equal(result.replacement.id, 'nuevo');
+  assert.equal(result.deleted, true);
+  assert.deepEqual(state.completedSummaryRegenerations, ['1525803909573116065']);
+  await assert.rejects(
+    regenerateSummaryMessage('1525803909573116065'),
+    /ya fue regenerado/
+  );
 });
 
 test('la demora de foto escala linealmente de cero a tres horas', () => {

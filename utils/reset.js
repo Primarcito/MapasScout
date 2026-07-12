@@ -64,7 +64,9 @@ async function ejecutarReset() {
       if (canalArchivo) {
         const embedsHistorial = generarEmbedsHistorial();
         for (const embedHistorial of embedsHistorial) {
-          await canalArchivo.send({ embeds: [embedHistorial] });
+          const archived = await canalArchivo.send({ embeds: [embedHistorial] });
+          state.lastArchivedSummaryMessageId = archived.id;
+          state.lastArchivedSummaryChannelId = canalArchivo.id;
         }
         console.log("Historial diario archivado correctamente.");
       }
@@ -90,7 +92,6 @@ async function ejecutarReset() {
   state.logAdmin = [];
   state.revisionEstado = {};
   state.revisionRound = null;
-  state.revisionScores = {};
   state.revisionRoundHistory = [];
 
   guardarDatos();

@@ -1,4 +1,4 @@
-const { MessageFlags } = require('discord.js');
+const { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
 const { canScout, canUseAdmin } = require('../permissions');
@@ -11,7 +11,8 @@ const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { verificarMapaVacio } = require('../utils/alerts');
 const { isVerificationButton, handleVerificationButton, cancelScoutVerification } = require('../utils/verification');
 const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
-const { tickRevisionRound } = require('../utils/revisionRounds');
+const { tickRevisionRound, getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
+const { payloadAjusteMultiplier } = require('../components/revisionMultiplierComponents');
 
 module.exports = async function handleButton(interaction) {
 
@@ -36,6 +37,67 @@ module.exports = async function handleButton(interaction) {
 
   if (interaction.customId === "volver_ciudades") {
     return interaction.update(respuestaCiudades());
+  }
+
+  /* ===== MULTIPLICADORES DE REVISIÓN ===== */
+
+  if (interaction.customId === 'revision_regenerate_summary') {
+    if (!canUseAdmin(interaction.member)) {
+      return interaction.reply({ content: 'No tienes permiso de admin.', flags: MessageFlags.Ephemeral });
+    }
+    const input = new TextInputBuilder()
+      .setCustomId('summary_message_id')
+      .setLabel('ID del resumen que será reemplazado')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ej: 1525803909573116065')
+      .setRequired(true);
+    if (state.lastArchivedSummaryMessageId) input.setValue(state.lastArchivedSummaryMessageId);
+    const modal = new ModalBuilder()
+      .setCustomId('modal_revision_regenerate_summary')
+      .setTitle('Regenerar resumen diario')
+      .addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
+  }
+
+  const multiplierButton = /^revision_mult_(down|up|exact|auto|full)_(\d+)$/.exec(interaction.customId);
+  if (multiplierButton) {
+    if (!canUseAdmin(interaction.member)) {
+      return interaction.reply({ content: 'No tienes permiso de admin.', flags: MessageFlags.Ephemeral });
+    }
+    const [, action, userId] = multiplierButton;
+    const score = state.revisionScores[userId] || {
+      misses: 0,
+      eligibleRounds: 0,
+      compliantRounds: 0,
+      multiplier: 1,
+    };
+    state.revisionScores[userId] = score;
+
+    if (action === 'exact') {
+      const input = new TextInputBuilder()
+        .setCustomId('multiplier_input')
+        .setLabel('Entre 0.70 y 1.00, o auto')
+        .setStyle(TextInputStyle.Short)
+        .setValue(getRevisionMultiplier(userId).toFixed(2))
+        .setRequired(true);
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_revision_multiplier_${userId}`)
+        .setTitle('Ajustar multiplicador')
+        .addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
+
+    if (action === 'auto') {
+      delete score.manualMultiplier;
+    } else if (action === 'full') {
+      score.manualMultiplier = 1;
+    } else {
+      const delta = action === 'down' ? -0.05 : 0.05;
+      const minimum = revisionConfig().minimumMultiplier;
+      score.manualMultiplier = Math.max(minimum, Math.min(1, Math.round((getRevisionMultiplier(userId) + delta) * 100) / 100));
+    }
+    guardarRevisionPanel();
+    return interaction.update({ content: null, ...payloadAjusteMultiplier(userId) });
   }
 
   /* ===== REGISTRO MAPA ===== */

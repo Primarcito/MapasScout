@@ -97,11 +97,18 @@ function generarEmbedsHistorial() {
       u.activo = true;
     }
     u.multiplier = getRevisionMultiplier(key);
-    u.points = Math.round(u.totalMin * u.multiplier);
+    const score = state.revisionScores[key] || {
+      misses: 0,
+      eligibleRounds: 0,
+      compliantRounds: 0,
+      multiplier: 1,
+    };
+    score.username = u.username;
+    state.revisionScores[key] = score;
   }
 
-  // Ordenar por tiempo total
-  const sorted = Object.values(porUsuario).sort((a, b) => b.points - a.points || b.totalMin - a.totalMin);
+  // Mapas solo reporta actividad. RankingBot calcula y escala los puntos al aprobar.
+  const sorted = Object.values(porUsuario).sort((a, b) => b.totalMin - a.totalMin);
 
   const medallas = ["🥇", "🥈", "🥉"];
   const lineasRanking = [];
@@ -115,7 +122,7 @@ function generarEmbedsHistorial() {
     const medalla = index < 3 ? medallas[index] : `${index + 1}.`;
 
     lineasRanking.push(
-      `${medalla} **${u.username}** — **${u.points} pts** · ${tiempo} · x${u.multiplier.toFixed(2)} · ` +
+      `${medalla} **${u.username}** — ${tiempo} · x${u.multiplier.toFixed(2)} · ` +
       `${numMapas} mapa${numMapas > 1 ? 's' : ''} · ${estado}\n`
     );
   });
