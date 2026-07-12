@@ -54,12 +54,20 @@ function revisionCustomId(ciudad, index) {
   return `revision_idx_${ciudad}__${index}`;
 }
 
+function ordenarMapas(items) {
+  return [...items].sort((a, b) => a.mapa.localeCompare(b.mapa, 'es', { sensitivity: 'base' }));
+}
+
 function componentesRevisionMapas(ciudad) {
   const filas = [];
   let fila = new ActionRowBuilder();
   let count = 0;
 
-  (state.mapas[ciudad] || []).forEach((mapa, index) => {
+  const mapasOrdenados = ordenarMapas(
+    (state.mapas[ciudad] || []).map((mapa, index) => ({ mapa, index }))
+  );
+
+  mapasOrdenados.forEach(({ mapa, index }) => {
     if (count % 5 === 0 && count !== 0) {
       filas.push(fila);
       fila = new ActionRowBuilder();
@@ -107,9 +115,13 @@ function componentesRevision(ciudad = null) {
   let fila = new ActionRowBuilder();
   let count = 0;
 
-  for (const c in state.mapas) {
-    if (!state.mapas[c] || state.mapas[c].length === 0) continue;
-    state.mapas[c].forEach((mapa, index) => {
+  const mapasOrdenados = ordenarMapas(
+    Object.entries(state.mapas).flatMap(([c, mapas]) =>
+      (mapas || []).map((mapa, index) => ({ c, mapa, index }))
+    )
+  );
+
+  mapasOrdenados.forEach(({ c, mapa, index }) => {
       if (count % 5 === 0 && count !== 0) {
         filas.push(fila);
         fila = new ActionRowBuilder();
@@ -127,8 +139,7 @@ function componentesRevision(ciudad = null) {
           .setStyle(revisado ? ButtonStyle.Success : ButtonStyle.Secondary)
       );
       count++;
-    });
-  }
+  });
   if (count > 0) filas.push(fila);
   return filas;
 }

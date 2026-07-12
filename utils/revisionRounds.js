@@ -51,6 +51,24 @@ function startRevisionRound(now = Date.now()) {
   return state.revisionRound;
 }
 
+async function beginRevisionRound(now = Date.now()) {
+  if (state.revisionRound && state.revisionRound.endsAt > now) {
+    return { round: state.revisionRound, created: false };
+  }
+
+  const round = startRevisionRound(now);
+  try {
+    const channel = await getRevisionChannel();
+    await channel?.send({
+      content: `${config.SCOUT_ROLE_MENTIONS} ${textEmoji('REVIEW')} **Nueva ronda de revisión**\nTienen **${revisionConfig().roundMinutes} minutos** para revisar los mapas.`,
+      allowedMentions: { roles: config.SCOUT_ROLE_IDS },
+    });
+  } catch (err) {
+    console.error('No se pudo avisar al rol Scout sobre la ronda:', err);
+  }
+  return { round, created: true };
+}
+
 function isReviewed(key, round = state.revisionRound) {
   const estado = state.revisionEstado[key];
   return Boolean(
@@ -61,7 +79,10 @@ function isReviewed(key, round = state.revisionRound) {
 }
 
 function getRevisionMultiplier(userId) {
-  return Number(state.revisionScores[userId]?.multiplier) || 1;
+  const score = state.revisionScores[userId] || {};
+  const manual = Number(score.manualMultiplier);
+  if (Number.isFinite(manual) && manual > 0) return manual;
+  return Number(score.multiplier) || 1;
 }
 
 async function getRevisionChannel() {
@@ -119,9 +140,11 @@ function applyRoundScores(round, pending) {
 
 async function finishRevisionRound(now = Date.now()) {
   const round = state.revisionRound;
-  if (!round) return startRevisionRound(now);
+  if (!round) return null;
 
-  const assignments = Object.entries(round.assignments || {}).map(([key, value]) => ({ key, ...value }));
+  const assignments = Object.entries(round.assignments || {})
+    .map(([key, value]) => ({ key, ...value }))
+    .sort((a, b) => a.mapa.localeCompare(b.mapa, 'es', { sensitivity: 'base' }));
   const reviewed = assignments.filter(item => isReviewed(item.key, round));
   const pending = assignments.filter(item => item.userIds.length > 0 && !isReviewed(item.key, round));
   const uncovered = assignments.filter(item => item.userIds.length === 0 && !isReviewed(item.key, round));
@@ -132,13 +155,13 @@ async function finishRevisionRound(now = Date.now()) {
     `✅ Revisados: **${reviewed.length}/${assignments.length}**`,
   ];
   if (pending.length > 0) {
-    lines.push('', '⚠️ **Con scouts pero sin revisión:**');
+    lines.push('', `${textEmoji('ALERT')} **Con scouts pero sin revisión:**`);
     for (const item of pending.slice(0, 15)) {
       lines.push(`• **${item.mapa}** · ${item.userIds.map(id => `<@${id}>`).join(' ')}`);
     }
   }
   if (uncovered.length > 0) {
-    lines.push('', '⛔ **Sin scouts:**', uncovered.slice(0, 15).map(item => `• ${item.mapa}`).join('\n'));
+    lines.push('', `${textEmoji('ZONA_ROJA')} **Sin scouts:**`, uncovered.slice(0, 15).map(item => `• ${item.mapa}`).join('\n'));
   }
 
   state.revisionRoundHistory.push({
@@ -168,7 +191,9 @@ async function finishRevisionRound(now = Date.now()) {
     });
   }
 
-  startRevisionRound(now);
+  state.revisionRound = null;
+  state.revisionEstado = {};
+  guardarRevisionPanel();
   await actualizarRevision();
 }
 
@@ -177,7 +202,8 @@ async function tickRevisionRound(now = Date.now()) {
   processingRound = true;
   try {
     const cfg = revisionConfig();
-    const round = state.revisionRound || startRevisionRound(now);
+    const round = state.revisionRound;
+    if (!round) return;
     if (now >= round.endsAt) return await finishRevisionRound(now);
 
     const warningAt = round.endsAt - cfg.warningMinutesBeforeEnd * 60000;
@@ -193,11 +219,12 @@ async function tickRevisionRound(now = Date.now()) {
 
 function startRevisionRounds() {
   if (intervalId) clearInterval(intervalId);
-  if (!state.revisionRound || state.revisionRound.endsAt <= Date.now()) {
-    // No penalizar una ronda que venció mientras el bot estuvo desconectado.
-    startRevisionRound();
+  if (state.revisionRound?.endsAt <= Date.now()) {
+    // No penalizar ni reemplazar una ronda que venció mientras el bot estuvo desconectado.
+    state.revisionRound = null;
+    state.revisionEstado = {};
+    guardarRevisionPanel();
   }
-  setTimeout(() => tickRevisionRound().catch(err => console.error('Error iniciando ronda de revisión:', err)), 5000);
   intervalId = setInterval(() => {
     tickRevisionRound().catch(err => console.error('Error procesando ronda de revisión:', err));
   }, 30 * 1000);
@@ -206,12 +233,15 @@ function startRevisionRounds() {
 function resetRevisionRounds(now = Date.now()) {
   state.revisionScores = {};
   state.revisionRoundHistory = [];
-  startRevisionRound(now);
+  state.revisionRound = null;
+  state.revisionEstado = {};
+  guardarRevisionPanel();
 }
 
 module.exports = {
   revisionConfig,
   startRevisionRound,
+  beginRevisionRound,
   startRevisionRounds,
   tickRevisionRound,
   finishRevisionRound,

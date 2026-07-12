@@ -7,13 +7,13 @@ const handleButton = require('./handlers/buttonHandler');
 const handleSelect = require('./handlers/selectHandler');
 const handleModal = require('./handlers/modalHandler');
 const { programarReset } = require('./utils/reset');
-const { actualizarPanel, actualizarRevision, crearPanelRevision, crearPanelRevisionMovil } = require('./utils/panel');
+const { actualizarPanel, actualizarRevision, crearPanelRevisionMovil } = require('./utils/panel');
 const { startScoutVerification, isVerificationButton, handleVerificationScreenshotMessage } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
 const { sendCreatorMessage } = require('./utils/creatorMessages');
 const { sincronizarMensajeAlertas } = require('./utils/alerts');
-const { startRevisionRounds, startRevisionRound } = require('./utils/revisionRounds');
+const { startRevisionRounds, beginRevisionRound } = require('./utils/revisionRounds');
 
 /* ================= CARGAR DATOS PERSISTIDOS ================= */
 
@@ -21,7 +21,6 @@ cargarDatos();
 cargarScouts();
 cargarPanel();
 cargarRevisionPanel();
-if (!state.revisionRound) startRevisionRound();
 startApiServer();
 
 /* ================= CREAR CLIENT ================= */
@@ -80,6 +79,7 @@ client.on("messageCreate", async message => {
     return message.reply("Necesitas el rol Scout para usar este comando.");
   }
 
+  await beginRevisionRound();
   await crearPanelRevisionMovil(message.channel);
 
   try { await message.delete(); } catch (e) {}
@@ -129,7 +129,7 @@ client.once("clientReady", async () => {
     }
   }
 
-  // Recuperar o crear panel de revisión
+  // Recuperar el panel de revisión si ya existe. Nunca publicarlo por un redeploy.
   try {
     const revChannel = await client.channels.fetch(config.REVISION_CHANNEL_ID);
     if (state.revisionMessageId) {
@@ -137,13 +137,11 @@ client.once("clientReady", async () => {
         state.revisionMessage = await revChannel.messages.fetch(state.revisionMessageId);
         console.log("Panel de revisión recuperado");
       } catch (e) {
-        console.log("Panel de revisión no encontrado, creando nuevo...");
+        console.log("Panel de revisión no encontrado; se esperará a /revisar.");
         state.revisionMessage = null;
         state.revisionMessageId = null;
-        await crearPanelRevision();
+        guardarRevisionPanel();
       }
-    } else {
-      await crearPanelRevision();
     }
   } catch (err) {
     console.error("Error recuperando canal de revisión:", err);

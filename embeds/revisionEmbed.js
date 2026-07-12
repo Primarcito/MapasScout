@@ -11,7 +11,9 @@ function generarEmbedRevision() {
   );
   let totalRev = 0, revisadosRev = 0;
   for (const ciudad in state.mapas) {
-    state.mapas[ciudad].forEach(mapa => {
+    [...state.mapas[ciudad]]
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+      .forEach(mapa => {
       totalRev++;
       const key = `${ciudad}__${mapa}`;
       if (isCurrent(state.revisionEstado[key])) revisadosRev++;
@@ -50,9 +52,9 @@ function generarEmbedRevision() {
         const menciones = estado.revisores.map(id => `<@${id}>`).join(" ");
         texto += `- ${textEmoji('VERIFIED')} **${mapa}** — ${menciones} hace ${tiempo}\n`;
       } else {
-        texto += `- ⚪ **${mapa}** — sin revisar\n`;
+        texto += `- ${textEmoji('EMPTY')} **${mapa}** — sin revisar\n`;
       }
-    });
+      });
 
     embed.addFields({
       name: `${cityTextEmoji(ciudad)} ${ciudad}`,

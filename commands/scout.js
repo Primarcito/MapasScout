@@ -4,7 +4,7 @@ const config = require('../config');
 const { canReview, canExport } = require('../permissions');
 const { crearPanelRevisionMovil } = require('../utils/panel');
 const { calcularTiempoReal } = require('../utils/timeCalc');
-const { getRevisionMultiplier } = require('../utils/revisionRounds');
+const { getRevisionMultiplier, beginRevisionRound } = require('../utils/revisionRounds');
 
 const EMBED_SAFE_DESCRIPTION_LIMIT = 3900;
 
@@ -203,8 +203,11 @@ module.exports = {
       }
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const { created } = await beginRevisionRound();
       await crearPanelRevisionMovil(interaction.channel);
-      return interaction.editReply('Panel móvil de revisión actualizado en este canal.');
+      return interaction.editReply(created
+        ? 'Ronda de 20 minutos iniciada y panel de revisión publicado en este canal.'
+        : 'Panel de revisión actualizado en este canal; la ronda actual continúa.');
     }
 
     /* ===== EXPORTAR ===== */

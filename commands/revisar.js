@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { canReview } = require('../permissions');
 const { crearPanelRevisionMovil } = require('../utils/panel');
+const { beginRevisionRound } = require('../utils/revisionRounds');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -16,7 +17,10 @@ module.exports = {
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const { created } = await beginRevisionRound();
     await crearPanelRevisionMovil(interaction.channel);
-    return interaction.editReply('Panel móvil de revisión actualizado en este canal.');
+    return interaction.editReply(created
+      ? 'Ronda de 20 minutos iniciada y panel de revisión publicado en este canal.'
+      : 'Panel de revisión actualizado en este canal; la ronda actual continúa.');
   },
 };

@@ -1,15 +1,55 @@
 const { MessageFlags } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
-const { guardarDatos, guardarScouts } = require('../data/persistence');
+const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { cancelScoutVerification } = require('../utils/verification');
 const { guardarUltimosMapas } = require('../utils/scouts');
 const { normalizarListaMapas } = require('../utils/mapNames');
 const { sincronizarMensajeAlertas } = require('../utils/alerts');
-const { startRevisionRound } = require('../utils/revisionRounds');
+const { canUseAdmin } = require('../permissions');
+const { getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
 
 module.exports = async function handleModal(interaction) {
+
+  /* ===== MODAL: MULTIPLICADOR MANUAL ===== */
+
+  if (interaction.customId.startsWith('modal_revision_multiplier_')) {
+    if (!canUseAdmin(interaction.member)) {
+      return interaction.reply({ content: 'No tienes permiso de admin.', flags: MessageFlags.Ephemeral });
+    }
+
+    const userId = interaction.customId.replace('modal_revision_multiplier_', '');
+    const raw = interaction.fields.getTextInputValue('multiplier_input').trim().toLowerCase();
+    const score = state.revisionScores[userId] || {
+      misses: 0,
+      eligibleRounds: 0,
+      compliantRounds: 0,
+      multiplier: 1,
+    };
+
+    if (raw === 'auto' || raw === 'automático' || raw === 'automatico') {
+      delete score.manualMultiplier;
+    } else {
+      const value = Number(raw.replace(',', '.'));
+      const minimum = revisionConfig().minimumMultiplier;
+      if (!Number.isFinite(value) || value < minimum || value > 1) {
+        return interaction.reply({
+          content: `Escribe un valor entre ${minimum.toFixed(2)} y 1.00, o \`auto\`.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      score.manualMultiplier = Math.round(value * 100) / 100;
+    }
+
+    state.revisionScores[userId] = score;
+    guardarRevisionPanel();
+    const modo = Number.isFinite(Number(score.manualMultiplier)) ? 'manual' : 'automático';
+    return interaction.reply({
+      content: `✅ Multiplicador de <@${userId}>: **x${getRevisionMultiplier(userId).toFixed(2)}** (${modo}).`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 
   /* ===== MODAL: CARGAR MAPAS BULK ===== */
 
@@ -102,7 +142,9 @@ module.exports = async function handleModal(interaction) {
     guardarScouts();
     await actualizarPanel();
     await sincronizarMensajeAlertas();
-    startRevisionRound();
+    state.revisionRound = null;
+    state.revisionEstado = {};
+    guardarRevisionPanel();
     await actualizarRevision();
 
     return interaction.reply({
@@ -151,7 +193,9 @@ module.exports = async function handleModal(interaction) {
     guardarScouts();
     await actualizarPanel();
     await sincronizarMensajeAlertas();
-    startRevisionRound();
+    state.revisionRound = null;
+    state.revisionEstado = {};
+    guardarRevisionPanel();
     await actualizarRevision();
 
     const confirmMsg = await interaction.reply({ content: `✅ Mapas de **${ciudad}** actualizados.`, flags: MessageFlags.Ephemeral, withResponse: true });

@@ -3,9 +3,19 @@ const state = require('../data/state');
 const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
-const { crearPanelRevision, actualizarRevision } = require('../utils/panel');
+const { actualizarRevision } = require('../utils/panel');
 const { forceScoutVerification, getVerificationMode, normalizeVerificationMode } = require('../utils/verification');
-const { startRevisionRound } = require('../utils/revisionRounds');
+const { getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
+
+function usuariosConMultiplicador() {
+  const ids = new Set(Object.keys(state.revisionScores || {}));
+  for (const mapas of Object.values(state.registros || {})) {
+    for (const users of Object.values(mapas || {})) for (const id of users) ids.add(id);
+  }
+  for (const id of Object.keys(state.scoutsActivos || {})) ids.add(id);
+  for (const entry of state.historialDia || []) if (entry.userId) ids.add(entry.userId);
+  return [...ids];
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -44,6 +54,22 @@ module.exports = {
     .addSubcommand(subcmd => 
       subcmd.setName("reset_revision")
         .setDescription("Reiniciar el panel de revisión a cero")
+    )
+    .addSubcommand(subcmd =>
+      subcmd.setName("multiplicadores")
+        .setDescription("Ver y ajustar manualmente los multiplicadores de scouts")
+    )
+    .addSubcommand(subcmd =>
+      subcmd.setName("multiplicador")
+        .setDescription("Ajustar el multiplicador de un scout específico")
+        .addUserOption(option => option
+          .setName('usuario')
+          .setDescription('Scout que deseas ajustar')
+          .setRequired(true))
+        .addStringOption(option => option
+          .setName('valor')
+          .setDescription('Entre 0.70 y 1.00, o auto')
+          .setRequired(true))
     ),
 
   async execute(interaction) {
@@ -150,6 +176,77 @@ module.exports = {
       return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
+    /* ===== MULTIPLICADORES ===== */
+    if (sub === 'multiplicador') {
+      const usuario = interaction.options.getUser('usuario');
+      const raw = interaction.options.getString('valor').trim().toLowerCase();
+      const score = state.revisionScores[usuario.id] || {
+        misses: 0,
+        eligibleRounds: 0,
+        compliantRounds: 0,
+        multiplier: 1,
+      };
+
+      if (raw === 'auto' || raw === 'automático' || raw === 'automatico') {
+        delete score.manualMultiplier;
+      } else {
+        const value = Number(raw.replace(',', '.'));
+        const minimum = revisionConfig().minimumMultiplier;
+        if (!Number.isFinite(value) || value < minimum || value > 1) {
+          return interaction.reply({
+            content: `Escribe un valor entre ${minimum.toFixed(2)} y 1.00, o \`auto\`.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        score.manualMultiplier = Math.round(value * 100) / 100;
+      }
+
+      state.revisionScores[usuario.id] = score;
+      guardarRevisionPanel();
+      const modo = Number.isFinite(Number(score.manualMultiplier)) ? 'manual' : 'automático';
+      return interaction.reply({
+        content: `✅ Multiplicador de ${usuario}: **x${getRevisionMultiplier(usuario.id).toFixed(2)}** (${modo}).`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (sub === "multiplicadores") {
+      const ids = usuariosConMultiplicador();
+      const miembros = ids.map(id => {
+        const username = interaction.guild.members.cache.get(id)?.user?.username || id;
+        const score = state.revisionScores[id] || {};
+        return { id, username, score, multiplier: getRevisionMultiplier(id) };
+      }).sort((a, b) => a.username.localeCompare(b.username, 'es', { sensitivity: 'base' }));
+
+      const description = miembros.length > 0
+        ? miembros.map(item => {
+            const manual = Number.isFinite(Number(item.score.manualMultiplier)) ? ' · manual' : '';
+            return `• <@${item.id}> — **x${item.multiplier.toFixed(2)}**${manual} · ${item.score.misses || 0} fallos`;
+          }).join('\n').slice(0, 3900)
+        : 'Todavía no hay scouts con puntuación registrada.';
+
+      const embed = new EmbedBuilder()
+        .setTitle('Multiplicadores de scouts')
+        .setColor(0x1f9d8a)
+        .setDescription(description)
+        .setFooter({ text: 'El ajuste manual se mantiene hasta elegir “automático”.' });
+
+      const components = [];
+      if (miembros.length > 0) {
+        const select = new StringSelectMenuBuilder()
+          .setCustomId('select_revision_multiplier')
+          .setPlaceholder('Selecciona un scout para ajustar')
+          .addOptions(miembros.slice(0, 25).map(item => ({
+            label: `${item.username} · x${item.multiplier.toFixed(2)}`.slice(0, 100),
+            value: item.id,
+            description: Number.isFinite(Number(item.score.manualMultiplier)) ? 'Ajuste manual activo' : 'Cálculo automático',
+          })));
+        components.push(new ActionRowBuilder().addComponents(select));
+      }
+
+      return interaction.reply({ embeds: [embed], components, flags: MessageFlags.Ephemeral });
+    }
+
     /* ===== RESET REVISION ===== */
     if (sub === "reset_revision") {
       // Limpiar todos los estados de revisión
@@ -157,22 +254,12 @@ module.exports = {
         if (state.revisionEstado[key]?.timeout) clearTimeout(state.revisionEstado[key].timeout);
         delete state.revisionEstado[key];
       }
-      startRevisionRound();
-
-      // Borrar mensaje viejo
-      if (state.revisionMessage) {
-        try { await state.revisionMessage.delete(); } catch (e) {}
-        state.revisionMessage = null;
-        state.revisionMessageId = null;
-        guardarRevisionPanel();
-      }
-
-      // Recrear panel en el canal fijo
-      await crearPanelRevision();
+      state.revisionRound = null;
+      guardarRevisionPanel();
       await actualizarRevision();
 
       return interaction.reply({
-        content: "✅ Panel de revisión reseteado.",
+        content: "✅ Revisión reseteada y detenida. Usa `/revisar` cuando quieras abrir la siguiente ronda.",
         flags: MessageFlags.Ephemeral
       });
     }

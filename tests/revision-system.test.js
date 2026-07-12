@@ -8,9 +8,10 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mapasbot-revision-'));
 process.env.DATA_DIR = tempDir;
 
 const state = require('../data/state');
-const { applyRoundScores, getRevisionMultiplier, finishRevisionRound } = require('../utils/revisionRounds');
+const { applyRoundScores, getRevisionMultiplier, finishRevisionRound, beginRevisionRound } = require('../utils/revisionRounds');
 const { calculatePhotoPenaltyMs, rollbackProvisionalCredit } = require('../utils/verification');
-const { crearPanelRevisionMovil } = require('../utils/panel');
+const { crearPanelRevisionMovil, actualizarRevision } = require('../utils/panel');
+const { componentesRevision } = require('../components/revisionComponents');
 const { cerrarScoutsActivos, descartarScoutsActivos } = require('../utils/scouts');
 const { guardarScouts, cargarScouts } = require('../data/persistence');
 
@@ -34,7 +35,7 @@ test('una ronda penaliza una sola vez por scout aunque falle varios mapas', () =
   assert.equal(state.revisionScores['1'].misses, 1);
 });
 
-test('cerrar una ronda publica síntesis, penaliza y abre la siguiente', async () => {
+test('cerrar una ronda publica síntesis, penaliza y queda detenida', async () => {
   const sent = [];
   state.mapas = { Lymhurst: ['Revisado', 'Pendiente'] };
   state.registros = { Lymhurst: { Revisado: ['1'], Pendiente: ['2'] } };
@@ -63,7 +64,45 @@ test('cerrar una ronda publica síntesis, penaliza y abre la siguiente', async (
   assert.match(sent[0].content, /Revisados: \*\*1\/2\*\*/);
   assert.equal(getRevisionMultiplier('1'), 1);
   assert.equal(getRevisionMultiplier('2'), 0.95);
-  assert.notEqual(state.revisionRound.id, 'ronda-1');
+  assert.equal(state.revisionRound, null);
+});
+
+test('iniciar revisión manual etiqueta al rol una sola vez durante la ronda', async () => {
+  const sent = [];
+  state.mapas = { Lymhurst: ['Mapa'] };
+  state.registros = { Lymhurst: { Mapa: ['1'] } };
+  state.revisionRound = null;
+  state.revisionEstado = {};
+  state.client = {
+    channels: { async fetch() { return { async send(payload) { sent.push(payload); } }; } },
+  };
+
+  const first = await beginRevisionRound(10_000);
+  const second = await beginRevisionRound(11_000);
+  assert.equal(first.created, true);
+  assert.equal(second.created, false);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].content, /<@&1435778823743340651>/);
+});
+
+test('los botones de revisión se muestran alfabéticamente sin perder su índice real', () => {
+  state.mapas = { Lymhurst: ['Zulu Map', 'Alpha Map'], Thetford: ['Beta Map'] };
+  state.revisionEstado = {};
+  state.revisionRound = null;
+  const buttons = componentesRevision().flatMap(row => row.components);
+  assert.deepEqual(buttons.map(button => button.data.label), ['Alpha Map', 'Beta Map', 'Zulu Map']);
+  assert.equal(buttons[0].data.custom_id, 'revision_idx_Lymhurst__1');
+});
+
+test('un multiplicador manual prevalece sin perder el cálculo automático', () => {
+  state.revisionScores = {
+    1: { misses: 1, eligibleRounds: 1, compliantRounds: 0, multiplier: 0.95, manualMultiplier: 0.88 },
+  };
+  applyRoundScores({ assignments: { uno: { userIds: ['1'] } } }, [{ userIds: ['1'] }]);
+  assert.equal(getRevisionMultiplier('1'), 0.88);
+  assert.equal(state.revisionScores['1'].multiplier, 0.90);
+  delete state.revisionScores['1'].manualMultiplier;
+  assert.equal(getRevisionMultiplier('1'), 0.90);
 });
 
 test('la demora de foto escala linealmente de cero a tres horas', () => {
@@ -137,6 +176,19 @@ test('el panel móvil reemplaza al anterior y conserva uno solo', async () => {
   assert.equal(deleted, 1);
   assert.equal(state.revisionMobileMessageId, 'nuevo');
   assert.equal(state.revisionMobileChannelId, 'canal-b');
+});
+
+test('actualizar revisión no publica paneles nuevos automáticamente', async () => {
+  let sends = 0;
+  state.mapas = {};
+  state.revisionMessage = null;
+  state.revisionMessageId = null;
+  state.revisionMobileMessage = null;
+  state.client = {
+    channels: { async fetch() { return { async send() { sends++; } }; } },
+  };
+  await actualizarRevision();
+  assert.equal(sends, 0);
 });
 
 test('la cola provisional de verificaciones sobrevive un reinicio', () => {

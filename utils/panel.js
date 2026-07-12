@@ -134,8 +134,11 @@ async function eliminarPanelRevisionMovil() {
 async function crearPanelRevisionMovil(channel) {
   if (!channel?.send) return null;
   if (channel.id === config.REVISION_CHANNEL_ID) {
-    await actualizarRevision();
-    return state.revisionMessage;
+    if (state.revisionMessage) {
+      await actualizarRevision();
+      return state.revisionMessage;
+    }
+    return crearPanelRevision();
   }
   await eliminarPanelRevisionMovil();
   const comps = componentesRevision();
@@ -152,14 +155,15 @@ async function crearPanelRevisionMovil(channel) {
 
 async function actualizarRevision() {
   const payload = { embeds: [generarEmbedRevision()], components: componentesRevision() };
-  try {
-    if (state.revisionMessage) await state.revisionMessage.edit(payload);
-    else await crearPanelRevision();
-  } catch (err) {
-    console.error("Error actualizando panel revisión permanente:", err);
-    state.revisionMessage = null;
-    state.revisionMessageId = null;
-    await crearPanelRevision();
+  if (state.revisionMessage) {
+    try {
+      await state.revisionMessage.edit(payload);
+    } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error("Error actualizando panel revisión permanente:", err);
+      state.revisionMessage = null;
+      state.revisionMessageId = null;
+      guardarRevisionPanel();
+    }
   }
 
   if (state.revisionMobileMessage) {
