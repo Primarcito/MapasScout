@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, MessageFlags, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, UserSelectMenuBuilder, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const state = require('../data/state');
 const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
@@ -260,17 +260,12 @@ module.exports = {
         .setFooter({ text: 'Solo aparecen scouts por debajo de x1.00. El ajuste manual se mantiene hasta elegir “automático”.' });
 
       const components = [];
-      if (miembros.length > 0) {
-        const select = new StringSelectMenuBuilder()
-          .setCustomId('select_revision_multiplier')
-          .setPlaceholder('Selecciona un scout para ajustar')
-          .addOptions(miembros.slice(0, 25).map(item => ({
-            label: item.username.slice(0, 100),
-            value: item.id,
-            description: `${Number.isFinite(Number(item.score.manualMultiplier)) ? 'Manual' : 'Automático'} · x${item.multiplier.toFixed(2)} · ${item.score.misses || 0} fallos`.slice(0, 100),
-          })));
-        components.push(new ActionRowBuilder().addComponents(select));
-      }
+      const select = new UserSelectMenuBuilder()
+        .setCustomId('select_revision_multiplier')
+        .setPlaceholder('Elige un scout para ajustar')
+        .setMinValues(1)
+        .setMaxValues(1);
+      components.push(new ActionRowBuilder().addComponents(select));
 
       components.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder()
