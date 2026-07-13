@@ -89,8 +89,8 @@ module.exports = {
           .setRequired(true))
         .addNumberOption(option => option
           .setName('horas')
-          .setDescription('Horas que deseas acreditar, por ejemplo 3 o 1.5')
-          .setMinValue(0.02)
+          .setDescription('Positivo suma y negativo resta; por ejemplo 3 o -1.5')
+          .setMinValue(-24)
           .setMaxValue(24)
           .setRequired(true))
         .addStringOption(option => option
@@ -221,8 +221,14 @@ module.exports = {
       const usuario = interaction.options.getUser('usuario');
       const horas = interaction.options.getNumber('horas');
       const motivo = interaction.options.getString('motivo') || 'ajuste administrativo';
-      const minutos = Math.max(1, Math.round(horas * 60));
-      asignarTiempoManual(
+      const minutos = Math.round(horas * 60);
+      if (minutos === 0) {
+        return interaction.reply({
+          content: 'El ajuste debe ser distinto de **0 horas**.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      const result = asignarTiempoManual(
         usuario.id,
         usuario.globalName || usuario.username,
         minutos,
@@ -232,15 +238,25 @@ module.exports = {
       state.logAdmin.push({
         timestamp: Date.now(),
         username: interaction.user.username,
-        accion: `asignó ${minutos} min a ${usuario.username}: ${motivo}`,
+        accion: `ajustó ${result.appliedMinutes > 0 ? '+' : ''}${result.appliedMinutes} min a ${usuario.username}: ${motivo}`,
       });
       guardarScouts();
 
-      const horasEnteras = Math.floor(minutos / 60);
-      const minutosRestantes = minutos % 60;
-      const tiempo = `${horasEnteras > 0 ? `${horasEnteras}h ` : ''}${minutosRestantes}m`.trim();
+      const formatTime = value => {
+        const absolute = Math.abs(value);
+        const hoursPart = Math.floor(absolute / 60);
+        const minutesPart = absolute % 60;
+        return `${hoursPart > 0 ? `${hoursPart}h ` : ''}${minutesPart}m`.trim();
+      };
+      if (result.appliedMinutes === 0) {
+        return interaction.reply({
+          content: `${usuario} no tiene horas disponibles para restar hoy. Su total continúa en **0m**.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      const accion = result.appliedMinutes > 0 ? 'sumaron' : 'restaron';
       return interaction.reply({
-        content: `✅ Se asignaron **${tiempo}** a ${usuario}. Se sumarán al resumen del día sin agregar mapas ni cobertura.`,
+        content: `✅ Se ${accion} **${formatTime(result.appliedMinutes)}** a ${usuario}. Total del día: **${formatTime(result.totalMinutes)}**. No se alteraron mapas ni cobertura.`,
         flags: MessageFlags.Ephemeral,
       });
     }

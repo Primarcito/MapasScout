@@ -84,7 +84,7 @@ function generarEmbedsHistorial() {
       };
     }
     if (s.manualTimeAdjustment) {
-      porUsuario[key].minutosManuales += Math.max(0, Number(s.duracionMin) || 0);
+      porUsuario[key].minutosManuales += Number(s.duracionMin) || 0;
     } else {
       porUsuario[key].mapasUnicos.add(`${s.ciudad}__${s.mapa}`);
       porUsuario[key].sesiones.push({ inicio: s.inicio, fin: s.fin });
@@ -95,7 +95,7 @@ function generarEmbedsHistorial() {
   let totalMinutosGlobal = 0;
   for (const key in porUsuario) {
     const u = porUsuario[key];
-    u.totalMin = calcularTiempoReal(u.sesiones) + u.minutosManuales;
+    u.totalMin = Math.max(0, calcularTiempoReal(u.sesiones) + u.minutosManuales);
     totalMinutosGlobal += u.totalMin;
     // Check if active now
     if (state.scoutsActivos[key] && state.scoutsActivos[key].length > 0) {

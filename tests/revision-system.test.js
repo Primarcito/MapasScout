@@ -188,7 +188,29 @@ test('la asignación manual suma horas sin inventar mapas ni cobertura', () => {
   assert.match(description, /Scout.*3h 0m.*0 mapa/s);
   assert.match(description, /0\/1/);
   assert.equal(state.historialDia[0].manualTimeAdjustment, true);
-  assert.equal(state.coberturaDia['Ajuste admin__Crédito de tiempo'], undefined);
+  assert.equal(state.coberturaDia['Ajuste admin__Ajuste de tiempo'], undefined);
+});
+
+test('una asignación negativa resta horas sin permitir un total menor que cero', () => {
+  state.historialScouts = [];
+  state.historialDia = [];
+  state.scoutsActivos = {};
+  state.mapas = {};
+  state.registros = {};
+  state.coberturaDia = {};
+  state.revisionScores = {};
+
+  asignarTiempoManual('1', 'Scout', 180, 'admin');
+  const subtraction = asignarTiempoManual('1', 'Scout', -60, 'admin');
+  assert.equal(subtraction.previousMinutes, 180);
+  assert.equal(subtraction.appliedMinutes, -60);
+  assert.equal(subtraction.totalMinutes, 120);
+  assert.match(generarEmbedsHistorial()[0].data.description, /Scout.*2h 0m.*0 mapa/s);
+
+  const clamped = asignarTiempoManual('1', 'Scout', -300, 'admin');
+  assert.equal(clamped.appliedMinutes, -120);
+  assert.equal(clamped.totalMinutes, 0);
+  assert.doesNotMatch(generarEmbedsHistorial()[0].data.description, /-\d+h/);
 });
 
 test('regenerar resumen publica el reemplazo antes de borrar el mensaje anterior', async () => {

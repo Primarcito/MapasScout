@@ -1,5 +1,6 @@
 const state = require('../data/state');
 const { normalizarReferenciasMapas } = require('./mapNames');
+const { calcularTiempoReal } = require('./timeCalc');
 
 function guardarUltimosMapas(userId) {
   const lista = [];
@@ -63,13 +64,34 @@ function descartarScoutsActivos(userId) {
 }
 
 function asignarTiempoManual(userId, username, minutos, adminId = null, motivo = null) {
-  const duracionMin = Math.max(1, Math.round(Number(minutos) || 0));
+  const requestedMinutes = Math.round(Number(minutos) || 0);
+  if (requestedMinutes === 0) throw new Error('El ajuste debe ser distinto de cero.');
+
+  const id = String(userId);
+  const sesiones = (state.historialDia || [])
+    .filter(entry => String(entry.userId) === id && !entry.manualTimeAdjustment)
+    .map(entry => ({ inicio: entry.inicio, fin: entry.fin }));
+  for (const entry of state.scoutsActivos?.[id] || []) {
+    sesiones.push({ inicio: entry.inicio, fin: Date.now() });
+  }
+  const minutosManuales = (state.historialDia || [])
+    .filter(entry => String(entry.userId) === id && entry.manualTimeAdjustment)
+    .reduce((total, entry) => total + (Number(entry.duracionMin) || 0), 0);
+  const previousMinutes = Math.max(0, calcularTiempoReal(sesiones) + minutosManuales);
+  const duracionMin = requestedMinutes < 0
+    ? -Math.min(Math.abs(requestedMinutes), previousMinutes)
+    : requestedMinutes;
+
+  if (duracionMin === 0) {
+    return { record: null, requestedMinutes, appliedMinutes: 0, previousMinutes, totalMinutes: previousMinutes };
+  }
+
   const fin = Date.now();
   const registro = {
-    userId: String(userId),
-    username: username || String(userId),
+    userId: id,
+    username: username || id,
     ciudad: 'Ajuste admin',
-    mapa: 'Crédito de tiempo',
+    mapa: 'Ajuste de tiempo',
     inicio: fin,
     fin,
     duracionMin,
@@ -79,7 +101,13 @@ function asignarTiempoManual(userId, username, minutos, adminId = null, motivo =
   };
   state.historialScouts.push(registro);
   state.historialDia.push(registro);
-  return registro;
+  return {
+    record: registro,
+    requestedMinutes,
+    appliedMinutes: duracionMin,
+    previousMinutes,
+    totalMinutes: previousMinutes + duracionMin,
+  };
 }
 
 function borrarRegistrosUsuario(userId) {
