@@ -1,8 +1,8 @@
-const { SlashCommandBuilder, MessageFlags, UserSelectMenuBuilder, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, StringSelectMenuBuilder, UserSelectMenuBuilder, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const state = require('../data/state');
 const { canUseAdmin } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
-const { cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
+const { cerrarScoutsActivos, asignarTiempoManual, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarRevision } = require('../utils/panel');
 const { forceScoutVerification, getVerificationMode, normalizeVerificationMode } = require('../utils/verification');
 const { getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
@@ -79,6 +79,25 @@ module.exports = {
     .addSubcommand(subcmd =>
       subcmd.setName("multiplicadores")
         .setDescription("Ver y ajustar manualmente los multiplicadores de scouts")
+    )
+    .addSubcommand(subcmd =>
+      subcmd.setName('asignar_horas')
+        .setDescription('Asignar tiempo manualmente a un scout')
+        .addUserOption(option => option
+          .setName('usuario')
+          .setDescription('Scout que recibirá el tiempo')
+          .setRequired(true))
+        .addNumberOption(option => option
+          .setName('horas')
+          .setDescription('Horas que deseas acreditar, por ejemplo 3 o 1.5')
+          .setMinValue(0.02)
+          .setMaxValue(24)
+          .setRequired(true))
+        .addStringOption(option => option
+          .setName('motivo')
+          .setDescription('Razón del ajuste')
+          .setMaxLength(100)
+          .setRequired(false))
     )
     .addSubcommand(subcmd =>
       subcmd.setName("multiplicador")
@@ -198,6 +217,34 @@ module.exports = {
     }
 
     /* ===== MULTIPLICADORES ===== */
+    if (sub === 'asignar_horas') {
+      const usuario = interaction.options.getUser('usuario');
+      const horas = interaction.options.getNumber('horas');
+      const motivo = interaction.options.getString('motivo') || 'ajuste administrativo';
+      const minutos = Math.max(1, Math.round(horas * 60));
+      asignarTiempoManual(
+        usuario.id,
+        usuario.globalName || usuario.username,
+        minutos,
+        interaction.user.id,
+        motivo,
+      );
+      state.logAdmin.push({
+        timestamp: Date.now(),
+        username: interaction.user.username,
+        accion: `asignó ${minutos} min a ${usuario.username}: ${motivo}`,
+      });
+      guardarScouts();
+
+      const horasEnteras = Math.floor(minutos / 60);
+      const minutosRestantes = minutos % 60;
+      const tiempo = `${horasEnteras > 0 ? `${horasEnteras}h ` : ''}${minutosRestantes}m`.trim();
+      return interaction.reply({
+        content: `✅ Se asignaron **${tiempo}** a ${usuario}. Se sumarán al resumen del día sin agregar mapas ni cobertura.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     if (sub === 'multiplicador') {
       const usuario = interaction.options.getUser('usuario');
       const raw = interaction.options.getString('valor').trim().toLowerCase();

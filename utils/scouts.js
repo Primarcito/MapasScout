@@ -62,6 +62,26 @@ function descartarScoutsActivos(userId) {
   delete state.scoutsActivos[userId];
 }
 
+function asignarTiempoManual(userId, username, minutos, adminId = null, motivo = null) {
+  const duracionMin = Math.max(1, Math.round(Number(minutos) || 0));
+  const fin = Date.now();
+  const registro = {
+    userId: String(userId),
+    username: username || String(userId),
+    ciudad: 'Ajuste admin',
+    mapa: 'Crédito de tiempo',
+    inicio: fin,
+    fin,
+    duracionMin,
+    motivo: motivo || 'asignación manual de tiempo',
+    manualTimeAdjustment: true,
+    ...(adminId ? { adminId: String(adminId) } : {}),
+  };
+  state.historialScouts.push(registro);
+  state.historialDia.push(registro);
+  return registro;
+}
+
 function borrarRegistrosUsuario(userId) {
   for (const ciudad in state.registros) {
     for (const mapa in state.registros[ciudad]) {
@@ -70,4 +90,10 @@ function borrarRegistrosUsuario(userId) {
   }
 }
 
-module.exports = { guardarUltimosMapas, cerrarScoutsActivos, descartarScoutsActivos, borrarRegistrosUsuario };
+module.exports = {
+  guardarUltimosMapas,
+  cerrarScoutsActivos,
+  descartarScoutsActivos,
+  asignarTiempoManual,
+  borrarRegistrosUsuario,
+};

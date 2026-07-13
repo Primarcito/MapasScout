@@ -20,7 +20,7 @@ const { crearPanelRevisionMovil, actualizarRevision } = require('../utils/panel'
 const { componentesRevision } = require('../components/revisionComponents');
 const { repairSummaryDescription, regenerateSummaryMessage } = require('../utils/dailySummary');
 const { generarEmbedsHistorial } = require('../commands/scout');
-const { cerrarScoutsActivos, descartarScoutsActivos } = require('../utils/scouts');
+const { cerrarScoutsActivos, descartarScoutsActivos, asignarTiempoManual } = require('../utils/scouts');
 const { guardarScouts, cargarScouts } = require('../data/persistence');
 
 test.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
@@ -171,6 +171,24 @@ test('el resumen de Mapas no publica puntos ni aplica la escala de RankingBot', 
   const description = generarEmbedsHistorial()[0].data.description;
   assert.doesNotMatch(description, /\bpts\b/i);
   assert.match(description, /1h 0m · x0\.95 · 1 mapa/);
+});
+
+test('la asignación manual suma horas sin inventar mapas ni cobertura', () => {
+  state.historialScouts = [];
+  state.historialDia = [];
+  state.scoutsActivos = {};
+  state.mapas = { Lymhurst: ['Mapa Uno'] };
+  state.registros = { Lymhurst: { 'Mapa Uno': [] } };
+  state.coberturaDia = {};
+  state.revisionScores = {};
+
+  asignarTiempoManual('1', 'Scout', 180, 'admin', 'captura válida');
+  const description = generarEmbedsHistorial()[0].data.description;
+
+  assert.match(description, /Scout.*3h 0m.*0 mapa/s);
+  assert.match(description, /0\/1/);
+  assert.equal(state.historialDia[0].manualTimeAdjustment, true);
+  assert.equal(state.coberturaDia['Ajuste admin__Crédito de tiempo'], undefined);
 });
 
 test('regenerar resumen publica el reemplazo antes de borrar el mensaje anterior', async () => {

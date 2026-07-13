@@ -79,18 +79,23 @@ function generarEmbedsHistorial() {
         username: s.username || s.userId,
         mapasUnicos: new Set(),
         sesiones: [],
+        minutosManuales: 0,
         activo: false
       };
     }
-    porUsuario[key].mapasUnicos.add(`${s.ciudad}__${s.mapa}`);
-    porUsuario[key].sesiones.push({ inicio: s.inicio, fin: s.fin });
+    if (s.manualTimeAdjustment) {
+      porUsuario[key].minutosManuales += Math.max(0, Number(s.duracionMin) || 0);
+    } else {
+      porUsuario[key].mapasUnicos.add(`${s.ciudad}__${s.mapa}`);
+      porUsuario[key].sesiones.push({ inicio: s.inicio, fin: s.fin });
+    }
   });
 
   // Calculate real time for each user
   let totalMinutosGlobal = 0;
   for (const key in porUsuario) {
     const u = porUsuario[key];
-    u.totalMin = calcularTiempoReal(u.sesiones);
+    u.totalMin = calcularTiempoReal(u.sesiones) + u.minutosManuales;
     totalMinutosGlobal += u.totalMin;
     // Check if active now
     if (state.scoutsActivos[key] && state.scoutsActivos[key].length > 0) {
