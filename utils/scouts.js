@@ -2,6 +2,29 @@ const state = require('../data/state');
 const { normalizarReferenciasMapas } = require('./mapNames');
 const { calcularTiempoReal } = require('./timeCalc');
 
+function isRegisteredActiveEntry(userId, entry) {
+  if (!entry?.ciudad || !entry?.mapa || !entry?.inicio) return false;
+  if (!state.mapas[entry.ciudad]?.includes(entry.mapa)) return false;
+  return Boolean(state.registros[entry.ciudad]?.[entry.mapa]?.includes(String(userId)));
+}
+
+function getRegisteredActiveEntries(userId) {
+  return (state.scoutsActivos[String(userId)] || []).filter(entry => isRegisteredActiveEntry(userId, entry));
+}
+
+function reconcileRegisteredActiveScouts() {
+  const removed = [];
+  for (const userId of Object.keys(state.scoutsActivos || {})) {
+    const original = state.scoutsActivos[userId] || [];
+    const valid = original.filter(entry => isRegisteredActiveEntry(userId, entry));
+    if (valid.length === original.length) continue;
+    removed.push(...original.filter(entry => !isRegisteredActiveEntry(userId, entry)).map(entry => ({ userId, ...entry })));
+    if (valid.length) state.scoutsActivos[userId] = valid;
+    else delete state.scoutsActivos[userId];
+  }
+  return removed;
+}
+
 function guardarUltimosMapas(userId) {
   const lista = [];
   for (const ciudad in state.registros) {
@@ -133,4 +156,7 @@ module.exports = {
   descartarScoutsActivos,
   asignarTiempoManual,
   borrarRegistrosUsuario,
+  isRegisteredActiveEntry,
+  getRegisteredActiveEntries,
+  reconcileRegisteredActiveScouts,
 };

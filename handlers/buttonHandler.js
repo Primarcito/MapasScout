@@ -14,7 +14,7 @@ const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
 const { tickRevisionRound, getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
 const { payloadAjusteMultiplier } = require('../components/revisionMultiplierComponents');
 const { mapConfigPanel, mapListEmbed, confirmClearMaps } = require('../components/mapConfigComponents');
-const { adminPanel, activeScoutsEmbed, verificationQueueEmbed, auditEmbed, verificationModePanel } = require('../components/adminComponents');
+const { adminPanel, adminScoutsPanel, adminVerificationsPanel, adminRevisionsPanel, activeScoutsEmbed, verificationQueueEmbed, auditEmbed, verificationModePanel } = require('../components/adminComponents');
 const { userPicker, multipliersPanel } = require('../utils/adminActions');
 const { takePendingMapChanges, applyMapChanges, scheduleMapChanges, clearScheduledMaps, clearActiveMaps } = require('../utils/mapManagement');
 const { addAuditEntry } = require('../utils/audit');
@@ -118,6 +118,15 @@ module.exports = async function handleButton(interaction) {
       return interaction.reply({ content: 'No tienes permiso para operar MapasBot.', flags: MessageFlags.Ephemeral });
     }
     const sensitive = canManageSensitiveScoutData(interaction.member);
+    if (interaction.customId === 'admin_section_scouts') {
+      return interaction.update(adminScoutsPanel({ sensitive }));
+    }
+    if (interaction.customId === 'admin_section_verifications') {
+      return interaction.update(adminVerificationsPanel({ sensitive }));
+    }
+    if (interaction.customId === 'admin_section_revisions') {
+      return interaction.update(adminRevisionsPanel({ sensitive }));
+    }
     if (interaction.customId === 'admin_active_scouts') {
       return interaction.update({ embeds: [activeScoutsEmbed()], components: [backRow()] });
     }

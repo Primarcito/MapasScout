@@ -2,6 +2,11 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('
 const state = require('../data/state');
 const { buttonEmoji } = require('../emojis');
 const { getVerificationMode } = require('../utils/verification');
+const { getRegisteredActiveEntries } = require('../utils/scouts');
+
+function homeButton() {
+  return new ButtonBuilder().setCustomId('admin_home').setLabel('Volver').setStyle(ButtonStyle.Secondary);
+}
 
 function adminPanel({ sensitive = false } = {}) {
   const embed = new EmbedBuilder()
@@ -13,27 +18,64 @@ function adminPanel({ sensitive = false } = {}) {
         : 'Acceso operativo. Puedes gestionar scouts, verificaciones y consultar la actividad.'
     );
 
-  const rows = [new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('admin_active_scouts').setLabel('Scouts activos').setEmoji(buttonEmoji('ACTIVE')).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('admin_remove_scout').setLabel('Retirar scout').setEmoji(buttonEmoji('DROP')).setStyle(ButtonStyle.Danger),
+  return { embeds: [embed], components: [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('admin_section_scouts').setLabel('Scouts').setEmoji(buttonEmoji('ACTIVE')).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('admin_section_verifications').setLabel('Verificaciones').setEmoji(buttonEmoji('VERIFIED')).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('admin_section_revisions').setLabel('Revisiones').setEmoji(buttonEmoji('REVIEW')).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('admin_audit').setLabel('Logs').setStyle(ButtonStyle.Secondary),
+  )] };
+}
+
+function adminScoutsPanel({ sensitive = false } = {}) {
+  const buttons = [
+    new ButtonBuilder().setCustomId('admin_active_scouts').setLabel('Ver activos').setEmoji(buttonEmoji('ACTIVE')).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('admin_remove_scout').setLabel('Retirar').setEmoji(buttonEmoji('DROP')).setStyle(ButtonStyle.Danger),
+  ];
+  if (sensitive) buttons.push(new ButtonBuilder().setCustomId('admin_assign_hours').setLabel('Asignar horas').setStyle(ButtonStyle.Secondary));
+  buttons.push(homeButton());
+  return {
+    embeds: [new EmbedBuilder().setTitle('Gestión de scouts').setColor(0x3498db).setDescription('Consulta scouts visibles en el panel o administra su actividad.')],
+    components: [new ActionRowBuilder().addComponents(...buttons)],
+  };
+}
+
+function adminVerificationsPanel({ sensitive = false } = {}) {
+  const buttons = [
+    new ButtonBuilder().setCustomId('admin_verification_queue').setLabel('Ver pendientes').setEmoji(buttonEmoji('REVIEW')).setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('admin_force_verify').setLabel('Enviar verificación').setEmoji(buttonEmoji('VERIFIED')).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('admin_verification_queue').setLabel('Verificaciones').setEmoji(buttonEmoji('REVIEW')).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('admin_audit').setLabel('Auditoría').setStyle(ButtonStyle.Secondary),
-  )];
+  ];
+  if (sensitive) buttons.push(new ButtonBuilder().setCustomId('admin_verification_mode').setLabel('Cambiar modo').setStyle(ButtonStyle.Secondary));
+  buttons.push(homeButton());
+  return {
+    embeds: [new EmbedBuilder().setTitle('Verificaciones').setColor(0xf1c40f).setDescription('Revisa pendientes o envía una verificación a un scout visible y activo.')],
+    components: [new ActionRowBuilder().addComponents(...buttons)],
+  };
+}
 
-  if (sensitive) rows.push(new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('admin_assign_hours').setLabel('Asignar horas').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('admin_multipliers').setLabel('Multiplicadores').setEmoji(buttonEmoji('ALERT')).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('admin_revision_control').setLabel('Revisiones').setEmoji(buttonEmoji('REVIEW')).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('admin_verification_mode').setLabel('Modo verificación').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('revision_regenerate_summary').setLabel('Regenerar resumen').setStyle(ButtonStyle.Secondary),
-  ));
-
-  return { embeds: [embed], components: rows };
+function adminRevisionsPanel({ sensitive = false } = {}) {
+  const round = state.revisionRound;
+  const buttons = [];
+  if (sensitive) {
+    buttons.push(
+      new ButtonBuilder().setCustomId('admin_multipliers').setLabel('Multiplicadores').setEmoji(buttonEmoji('ALERT')).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('admin_revision_control').setLabel('Control de ronda').setEmoji(buttonEmoji('REVIEW')).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('revision_regenerate_summary').setLabel('Regenerar resumen').setStyle(ButtonStyle.Secondary),
+    );
+  }
+  buttons.push(homeButton());
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle('Revisiones')
+      .setColor(round ? 0xf1c40f : 0x57f287)
+      .setDescription(round ? `Ronda activa hasta <t:${Math.floor(round.endsAt / 1000)}:R>.` : 'No hay una ronda activa.')],
+    components: [new ActionRowBuilder().addComponents(...buttons)],
+  };
 }
 
 function activeScoutsEmbed() {
-  const entries = Object.entries(state.scoutsActivos || {});
+  const entries = Object.keys(state.scoutsActivos || {})
+    .map(userId => [userId, getRegisteredActiveEntries(userId)])
+    .filter(([, maps]) => maps.length > 0);
   const lines = entries.slice(0, 40).map(([userId, maps]) => {
     const oldest = Math.min(...maps.map(map => Number(map.inicio) || Date.now()));
     return `• <@${userId}> · **${maps.length}** mapas · desde <t:${Math.floor(oldest / 1000)}:R>`;
@@ -67,7 +109,7 @@ function auditEmbed() {
     return `• <t:${Math.floor(entry.timestamp / 1000)}:t> ${actor} ${entry.accion}`;
   });
   return new EmbedBuilder()
-    .setTitle('Auditoría administrativa')
+    .setTitle('Logs administrativos')
     .setColor(0x95a5a6)
     .setDescription(lines.join('\n').slice(0, 3900) || 'No hay movimientos registrados.');
 }
@@ -89,6 +131,9 @@ function verificationModePanel() {
 
 module.exports = {
   adminPanel,
+  adminScoutsPanel,
+  adminVerificationsPanel,
+  adminRevisionsPanel,
   activeScoutsEmbed,
   verificationQueueEmbed,
   auditEmbed,

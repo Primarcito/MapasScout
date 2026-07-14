@@ -10,7 +10,7 @@ const exportarCommand = require('../commands/mapasExportar');
 const adminCommand = require('../commands/admin');
 const { parseBulkMapInput, mapChangesDiff } = require('../utils/mapManagement');
 const { cerrarScoutsActivosFiltrados } = require('../utils/scouts');
-const { adminPanel } = require('../components/adminComponents');
+const { adminPanel, adminScoutsPanel, adminVerificationsPanel, adminRevisionsPanel } = require('../components/adminComponents');
 
 function memberWith(...roles) {
   return { roles: { cache: { has: id => roles.includes(id) } } };
@@ -36,8 +36,11 @@ test('los comandos usan palabras individuales con el prefijo mapas', () => {
 });
 
 test('el panel operativo no muestra acciones sensibles', () => {
-  const operatorIds = adminPanel({ sensitive: false }).components.flatMap(row => row.components.map(button => button.data.custom_id));
-  const seniorIds = adminPanel({ sensitive: true }).components.flatMap(row => row.components.map(button => button.data.custom_id));
+  const ids = payload => payload.components.flatMap(row => row.components.map(button => button.data.custom_id));
+  const mainIds = ids(adminPanel({ sensitive: true }));
+  const operatorIds = [adminScoutsPanel({ sensitive: false }), adminVerificationsPanel({ sensitive: false }), adminRevisionsPanel({ sensitive: false })].flatMap(ids);
+  const seniorIds = [adminScoutsPanel({ sensitive: true }), adminVerificationsPanel({ sensitive: true }), adminRevisionsPanel({ sensitive: true })].flatMap(ids);
+  assert.deepEqual(mainIds, ['admin_section_scouts', 'admin_section_verifications', 'admin_section_revisions', 'admin_audit']);
   assert.equal(operatorIds.includes('admin_assign_hours'), false);
   assert.equal(operatorIds.includes('admin_multipliers'), false);
   assert.equal(seniorIds.includes('admin_assign_hours'), true);

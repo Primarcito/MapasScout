@@ -9,6 +9,8 @@ process.env.DATA_DIR = tempDir;
 
 const state = require('../data/state');
 const { applyMapChanges, scheduleMapChanges } = require('../utils/mapManagement');
+const { forceScoutVerification } = require('../utils/verification');
+const { reconcileRegisteredActiveScouts } = require('../utils/scouts');
 
 test.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
 
@@ -58,4 +60,18 @@ test('programar mapas guarda una configuración completa para el siguiente perí
   assert.equal(state.scheduledMaps.maps.Thetford[0], 'Future Map');
   assert.deepEqual(state.scheduledMaps.maps.Lymhurst, ['Kept', 'Added']);
   assert.equal(fs.existsSync(path.join(tempDir, 'data.json')), true);
+});
+
+test('una sesión que no aparece registrada en el panel no recibe verificación', async () => {
+  state.mapas.Lymhurst = ['Visible Map'];
+  state.registros.Lymhurst = { 'Visible Map': [] };
+  state.scoutsActivos = {
+    hiddenUser: [{ ciudad: 'Lymhurst', mapa: 'Visible Map', inicio: Date.now() - 5 * 60 * 60 * 1000, username: 'Hidden' }],
+  };
+
+  const result = await forceScoutVerification('hiddenUser', 'admin1');
+  assert.deepEqual(result, { ok: false, reason: 'inactive' });
+  const removed = reconcileRegisteredActiveScouts();
+  assert.equal(removed.length, 1);
+  assert.equal(state.scoutsActivos.hiddenUser, undefined);
 });

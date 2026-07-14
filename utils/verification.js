@@ -3,7 +3,7 @@ const state = require('../data/state');
 const settings = require('../settings');
 const config = require('../config');
 const { guardarDatos, guardarScouts } = require('../data/persistence');
-const { guardarUltimosMapas, cerrarScoutsActivos, descartarScoutsActivos, borrarRegistrosUsuario } = require('./scouts');
+const { guardarUltimosMapas, cerrarScoutsActivos, descartarScoutsActivos, borrarRegistrosUsuario, getRegisteredActiveEntries, reconcileRegisteredActiveScouts } = require('./scouts');
 const { actualizarPanel } = require('./panel');
 const { verificarMapaVacio } = require('./alerts');
 const { sendScoutLog, formatMaps, formatUser } = require('./scoutLogs');
@@ -68,7 +68,7 @@ function noPhotoExpirationContent(userId) {
 }
 
 function getActiveEntries(userId) {
-  return (state.scoutsActivos[userId] || []).filter(entry => entry && entry.inicio);
+  return getRegisteredActiveEntries(userId);
 }
 
 function getOldestStart(entries) {
@@ -389,6 +389,12 @@ async function closeScoutByVerification(userId, motivo, finOverride, options = {
 async function reviewActiveScouts() {
   const cfg = getVerificationConfig();
   if (!cfg.enabled) return;
+
+  const staleEntries = reconcileRegisteredActiveScouts();
+  if (staleEntries.length) {
+    guardarScouts();
+    console.log(`Se descartaron ${staleEntries.length} sesiones residuales que no aparecían en el panel.`);
+  }
 
   const now = Date.now();
   const maxMs = cfg.maxActiveMinutes * 60000;

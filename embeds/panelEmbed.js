@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const state = require('../data/state');
 const { textEmoji, cityTextEmoji } = require('../emojis');
+const { getRegisteredActiveEntries } = require('../utils/scouts');
 
 const MAX_EMBED_DESCRIPTION_LENGTH = 4096;
 const MAX_EMBEDS_PER_MESSAGE = 10;
@@ -66,7 +67,7 @@ function calcularResumenPanel() {
         const minActivo = state.coberturaDia[key]?.minutos || 0;
         let alguienActivo = false;
         for (const userId in state.scoutsActivos) {
-          if (state.scoutsActivos[userId].some(e => e.ciudad === c && e.mapa === m)) {
+          if (getRegisteredActiveEntries(userId).some(e => e.ciudad === c && e.mapa === m)) {
             alguienActivo = true;
             break;
           }
@@ -85,7 +86,7 @@ function generarTextoCiudad(ciudad, ahora) {
   state.mapas[ciudad].forEach(mapa => {
     const users = state.registros[ciudad]?.[mapa] || [];
     const menciones = users.map(id => {
-      const entrada = state.scoutsActivos[id]?.find(e => e.ciudad === ciudad && e.mapa === mapa);
+      const entrada = getRegisteredActiveEntries(id).find(e => e.ciudad === ciudad && e.mapa === mapa);
       if (entrada) {
         const mins = Math.floor((ahora - entrada.inicio) / 60000);
         const horas = Math.floor(mins / 60);
@@ -119,7 +120,8 @@ function generarEmbeds() {
   const pct = totalMapas > 0 ? Math.round((mapasCubiertos / totalMapas) * 100) : 0;
   const hora = new Date().toISOString().slice(11, 16);
 
-  const totalScoutsActivos = Object.keys(state.scoutsActivos).length;
+  const totalScoutsActivos = Object.keys(state.scoutsActivos)
+    .filter(userId => getRegisteredActiveEntries(userId).length > 0).length;
   const descBase = "Usa el botón **Anotarse** para registrarte en un mapa.\nMáximo 5 scouts por mapa.";
   const descActivos = totalScoutsActivos > 0 ? `\n👥 **${totalScoutsActivos} scout${totalScoutsActivos > 1 ? "s" : ""} activo${totalScoutsActivos > 1 ? "s" : ""}**` : "";
   const encabezado = `${descBase}${descActivos}`;
