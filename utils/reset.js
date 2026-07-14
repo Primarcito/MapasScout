@@ -6,6 +6,7 @@ const { actualizarPanel, actualizarRevision } = require('./panel');
 const { generarEmbedsHistorial } = require('../commands/scout');
 const { cancelScoutVerification } = require('./verification');
 const config = require('../config');
+const { addAuditEntry } = require('./audit');
 
 function programarReset() {
   const ahora = new Date();
@@ -33,30 +34,6 @@ function programarReset() {
 async function ejecutarReset() {
   console.log("Ejecutando reset diario...");
 
-  // Cancelar si se editaron mapas desde las 7 UTC de hoy
-  const hoy7UTC = new Date();
-  hoy7UTC.setUTCHours(7, 0, 0, 0);
-
-  const huboCambios = state.ultimaEdicion && state.ultimaEdicion >= hoy7UTC.getTime();
-
-  if (huboCambios) {
-    console.log("Reset cancelado — mapas editados después de las 7 UTC");
-
-    if (state.panelMessage) {
-      try {
-        const resetMsg = await state.panelMessage.channel.send(
-          "⚠️ **Reset cancelado** — Los mapas fueron actualizados hoy. El panel sigue vigente."
-        );
-        setTimeout(async () => {
-          try { await resetMsg.delete(); } catch (e) {}
-        }, 20 * 60 * 1000);
-      } catch (err) {
-        console.error("Error enviando aviso:", err);
-      }
-    }
-    return;
-  }
-
   // Auto-postear historial antes de borrar
   try {
     if (config.ARCHIVE_CHANNEL_ID && state.client) {
@@ -75,21 +52,26 @@ async function ejecutarReset() {
     console.error("Error archivando historial diario:", err);
   }
 
-  // Reset total
-  for (const ciudad in state.registros) state.registros[ciudad] = {};
-  for (const ciudad in state.mapas) state.mapas[ciudad] = [];
-
+  // Cerrar el periodo anterior antes de activar la configuracion siguiente.
   for (const userId in state.scoutsActivos) {
     cerrarScoutsActivos(userId, null, "reset");
     await cancelScoutVerification(userId, "Verificacion cancelada: reset diario completado.");
   }
+
+  const nextMaps = state.scheduledMaps?.maps || Object.fromEntries(
+    Object.keys(state.mapas).map(city => [city, []])
+  );
+  for (const ciudad of Object.keys(state.mapas)) {
+    state.mapas[ciudad] = [...(nextMaps[ciudad] || [])];
+    state.registros[ciudad] = Object.fromEntries(state.mapas[ciudad].map(map => [map, []]));
+  }
+  state.scheduledMaps = null;
 
   state.ultimosMapas = {};
   state.mapasEnAlerta = {};
   state.ultimaEdicion = null;
   state.historialDia = [];
   state.coberturaDia = {};
-  state.logAdmin = [];
   state.revisionEstado = {};
   state.revisionRound = null;
   state.revisionRoundHistory = [];
@@ -97,6 +79,7 @@ async function ejecutarReset() {
   guardarDatos();
   guardarScouts();
   guardarRevisionPanel();
+  addAuditEntry({ action: 'completo el cierre diario y activo el siguiente periodo' });
   await actualizarPanel();
   await actualizarRevision();
   await sincronizarMensajeAlertas();
@@ -104,7 +87,7 @@ async function ejecutarReset() {
   if (state.panelMessage) {
     try {
       await state.panelMessage.channel.send(
-        "🔄 **Reset diario completado** — Los mapas han sido limpiados. Un admin puede cargar los nuevos con `/editar_mapas`."
+        `🔄 **Cierre diario completado** — ${Object.values(state.mapas).flat().length > 0 ? 'Se activaron los mapas programados.' : 'Los mapas quedaron vacíos; usa `/mapas configurar`.'}`
       );
     } catch (err) {
       console.error("Error enviando aviso de reset:", err);

@@ -10,6 +10,12 @@ module.exports = {
   // Log de cambios de admin
   logAdmin: [],
 
+  // Configuracion completa que se activara en el siguiente cierre diario.
+  scheduledMaps: null,
+
+  // Vistas previas efimeras de cambios, indexadas por usuario administrador.
+  pendingMapChanges: new Map(),
+
   // Cobertura: tiempo total por mapa { "ciudad__mapa": { ciudad, mapa, minutos, ... } }
   coberturaDia: {},
 

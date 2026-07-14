@@ -1,10 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const state = require('../data/state');
-const config = require('../config');
-const { canReview, canExport } = require('../permissions');
-const { crearPanelRevisionMovil } = require('../utils/panel');
+const { canExport } = require('../permissions');
 const { calcularTiempoReal } = require('../utils/timeCalc');
-const { getRevisionMultiplier, beginRevisionRound } = require('../utils/revisionRounds');
+const { getRevisionMultiplier } = require('../utils/revisionRounds');
 
 const EMBED_SAFE_DESCRIPTION_LIMIT = 3900;
 
@@ -176,17 +174,36 @@ async function enviarEmbedsPaginados(interaction, embeds) {
   }
 }
 
+function csvCell(value) {
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function sesionesExportables(now = Date.now()) {
+  const rows = [...state.historialDia];
+  for (const [userId, entries] of Object.entries(state.scoutsActivos || {})) {
+    for (const entry of entries || []) {
+      rows.push({
+        userId,
+        username: entry.username || userId,
+        ciudad: entry.ciudad,
+        mapa: entry.mapa,
+        inicio: entry.inicio,
+        fin: null,
+        duracionMin: Math.max(0, Math.floor((now - entry.inicio) / 60000)),
+      });
+    }
+  }
+  return rows;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("scout")
-    .setDescription("Comandos para scouts: historial, revisión y exportación")
+    .setDescription("Historial y exportación de actividad scout")
     .addSubcommand(subcmd => 
       subcmd.setName("historial")
         .setDescription("Ver el resumen y ranking de scouts del día")
-    )
-    .addSubcommand(subcmd => 
-      subcmd.setName("revisar")
-        .setDescription("Crear el panel interactivo de revisión de mapas")
     )
     .addSubcommand(subcmd => 
       subcmd.setName("exportar")
@@ -205,23 +222,6 @@ module.exports = {
       return enviarEmbedsPaginados(interaction, embeds);
     }
 
-    /* ===== REVISAR ===== */
-    if (sub === "revisar") {
-      if (!canReview(interaction.member)) {
-        return interaction.reply({
-          content: "Necesitas el rol Scout para usar este comando.",
-          flags: MessageFlags.Ephemeral
-        });
-      }
-
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const { created } = await beginRevisionRound();
-      await crearPanelRevisionMovil(interaction.channel);
-      return interaction.editReply(created
-        ? 'Ronda de 20 minutos iniciada y panel de revisión publicado en este canal.'
-        : 'Panel de revisión actualizado en este canal; la ronda actual continúa.');
-    }
-
     /* ===== EXPORTAR ===== */
     if (sub === "exportar") {
       if (!canExport(interaction.member)) {
@@ -231,7 +231,8 @@ module.exports = {
         });
       }
 
-      if (state.historialDia.length === 0) {
+      const sesiones = sesionesExportables();
+      if (sesiones.length === 0) {
         return interaction.reply({
           content: "No hay actividad registrada hoy.",
           flags: MessageFlags.Ephemeral
@@ -240,10 +241,10 @@ module.exports = {
 
       const fecha = new Date().toISOString().split("T")[0];
       let csv = "Usuario,Mapa,Ciudad,Entrada UTC,Salida UTC,Duracion (min)\n";
-      state.historialDia.forEach(s => {
+      sesiones.forEach(s => {
         const entrada = new Date(s.inicio).toISOString().replace("T", " ").slice(0, 19);
         const salida = s.fin ? new Date(s.fin).toISOString().replace("T", " ").slice(0, 19) : "activo";
-        csv += `${s.username || s.userId},${s.mapa},${s.ciudad},${entrada},${salida},${s.duracionMin}\n`;
+        csv += [s.username || s.userId, s.mapa, s.ciudad, entrada, salida, s.duracionMin].map(csvCell).join(',') + '\n';
       });
 
       const buffer = Buffer.from(csv, "utf-8");

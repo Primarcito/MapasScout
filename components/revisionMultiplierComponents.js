@@ -36,6 +36,10 @@ function payloadAjusteMultiplier(userId) {
       .setCustomId('revision_regenerate_summary')
       .setLabel('Regenerar resumen')
       .setEmoji('♻️')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('admin_home')
+      .setLabel('Volver')
       .setStyle(ButtonStyle.Secondary)
   );
 

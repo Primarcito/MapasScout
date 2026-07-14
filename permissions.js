@@ -20,6 +20,10 @@ function canUseAdmin(member) {
   return hasRole(member, ROLE_IDS.admin);
 }
 
+function canManageSensitiveScoutData(member) {
+  return hasRole(member, ROLE_IDS.seniorAdmin);
+}
+
 function canReview(member) {
   return hasRole(member, ROLE_IDS.scout);
 }
@@ -39,6 +43,7 @@ module.exports = {
   canScout,
   canManageMaps,
   canUseAdmin,
+  canManageSensitiveScoutData,
   canReview,
   canExport,
   canDecideVerification,

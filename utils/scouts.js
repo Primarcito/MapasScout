@@ -20,14 +20,16 @@ function guardarUltimosMapas(userId) {
   return completa;
 }
 
-function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOverride = null, options = {}) {
+function cerrarScoutsActivosFiltrados(userId, predicate, username = null, motivo = "manual", finOverride = null, options = {}) {
   const entradas = state.scoutsActivos[userId];
   if (!entradas || entradas.length === 0) return;
 
   const fin = finOverride || Date.now();
   const creditFrom = options.creditFrom || null;
   const creditPenaltyMs = Math.max(0, Number(options.creditPenaltyMs) || 0);
-  entradas.forEach(entry => {
+  const cerradas = entradas.filter(predicate);
+  const restantes = entradas.filter(entry => !predicate(entry));
+  cerradas.forEach(entry => {
     const inicioBase = creditFrom ? Math.max(entry.inicio, creditFrom) : entry.inicio;
     const inicio = Math.min(fin, inicioBase + creditPenaltyMs);
     const duracionMin = Math.max(0, Math.floor((fin - inicio) / 60000));
@@ -56,7 +58,13 @@ function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOver
     state.coberturaDia[cobKey].ultimaActividad = fin;
   });
 
-  delete state.scoutsActivos[userId];
+  if (restantes.length > 0) state.scoutsActivos[userId] = restantes;
+  else delete state.scoutsActivos[userId];
+  return cerradas;
+}
+
+function cerrarScoutsActivos(userId, username = null, motivo = "manual", finOverride = null, options = {}) {
+  return cerrarScoutsActivosFiltrados(userId, () => true, username, motivo, finOverride, options);
 }
 
 function descartarScoutsActivos(userId) {
@@ -121,6 +129,7 @@ function borrarRegistrosUsuario(userId) {
 module.exports = {
   guardarUltimosMapas,
   cerrarScoutsActivos,
+  cerrarScoutsActivosFiltrados,
   descartarScoutsActivos,
   asignarTiempoManual,
   borrarRegistrosUsuario,

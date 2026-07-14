@@ -26,6 +26,7 @@ function guardarDatos() {
       ultimaEdicion: state.ultimaEdicion,
       verificationMode: state.verificationMode,
       mapasEnAlerta: state.mapasEnAlerta,
+      scheduledMaps: state.scheduledMaps,
     }, null, 2)
   );
 }
@@ -39,6 +40,9 @@ function cargarDatos() {
     state.ultimaEdicion = data.ultimaEdicion || null;
     state.verificationMode = data.verificationMode || state.verificationMode;
     state.mapasEnAlerta = normalizarAlertasMapas(data.mapasEnAlerta || {});
+    state.scheduledMaps = data.scheduledMaps?.maps
+      ? { ...data.scheduledMaps, maps: normalizarMapasPorCiudad(data.scheduledMaps.maps) }
+      : null;
   }
 }
 
@@ -52,6 +56,8 @@ function guardarScouts() {
       ultimosMapas: state.ultimosMapas,
       historialDia: state.historialDia,
       verificaciones: state.verificacionesScout,
+      logAdmin: state.logAdmin,
+      coberturaDia: state.coberturaDia,
     }, null, 2)
   );
 }
@@ -69,6 +75,8 @@ function cargarScouts() {
     );
     state.historialDia = (data.historialDia || []).map(e => ({ ...e, mapa: normalizarNombreMapa(e.mapa) }));
     state.verificacionesScout = data.verificaciones || {};
+    state.logAdmin = data.logAdmin || [];
+    state.coberturaDia = data.coberturaDia || {};
   }
 }
 

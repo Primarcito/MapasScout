@@ -47,6 +47,7 @@ function getVerificationConfig() {
     graceMinutes: numberOrDefault(raw.graceMinutes, 10, 1),
     checkIntervalMinutes: numberOrDefault(raw.checkIntervalMinutes, 5, 1),
     scoutReviewVotes: numberOrDefault(raw.scoutReviewVotes, 3, 1),
+    reviewReminderMinutes: numberOrDefault(raw.reviewReminderMinutes, 30, 1),
   };
 }
 
@@ -403,6 +404,21 @@ async function reviewActiveScouts() {
     }
 
     if (pending.status === 'waiting_review') {
+      const submittedAt = pending.screenshotReceivedAt || pending.createdAt || now;
+      const reminderAt = submittedAt + cfg.reviewReminderMinutes * 60000;
+      if (!pending.reviewReminderSentAt && now >= reminderAt) {
+        const channel = await state.client?.channels.fetch(pending.reviewChannelId).catch(() => null);
+        if (channel) {
+          const roleIds = settings.roles?.verificationOfficer || [];
+          const mentions = roleIds.map(id => `<@&${id}>`).join(' ');
+          await channel.send({
+            content: `${mentions} evidencia de <@${userId}> pendiente desde <t:${Math.floor(submittedAt / 1000)}:R>. ${pending.evidenceUrl || ''}`.trim(),
+            allowedMentions: { roles: roleIds },
+          }).catch(err => console.error('No se pudo avisar una evidencia pendiente:', err));
+        }
+        pending.reviewReminderSentAt = now;
+        guardarScouts();
+      }
       continue;
     }
 

@@ -29,6 +29,13 @@ const SETTINGS = {
       // 'OTRO_ROL_ID',
     ],
 
+    // Operadores de mayor jerarquia. Pueden modificar horas, multiplicadores,
+    // rondas y configuraciones globales que afectan puntuacion.
+    seniorAdmin: [
+      '1435778823743340652',
+      // 'ROL_GM_U_OFFICER_ADICIONAL',
+    ],
+
     // Puede exportar historial del dia.
     lider: [
       '1435778823743340652',
@@ -81,6 +88,7 @@ const SETTINGS = {
     graceMinutes: Number(process.env.SCOUT_VERIFICATION_GRACE_MINUTES || 10),
     checkIntervalMinutes: Number(process.env.SCOUT_VERIFICATION_CHECK_MINUTES || 5),
     scoutReviewVotes: Number(process.env.SCOUT_VERIFICATION_SCOUT_VOTES || 3),
+    reviewReminderMinutes: Number(process.env.SCOUT_VERIFICATION_REVIEW_REMINDER_MINUTES || 30),
   },
 
   revision: {

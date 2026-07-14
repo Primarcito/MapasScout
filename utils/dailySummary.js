@@ -4,8 +4,6 @@ const config = require('../config');
 const { guardarRevisionPanel } = require('../data/persistence');
 const { getRevisionMultiplier } = require('./revisionRounds');
 
-const ONE_TIME_SUMMARY_REPAIRS = ['1525803909573116065'];
-
 function normalizeIdentity(value) {
   return String(value || '')
     .normalize('NFKD')
@@ -95,26 +93,9 @@ async function regenerateSummaryMessage(messageId) {
   return { replacement, deleted, changed: repaired.changed };
 }
 
-async function runPendingSummaryRepairs() {
-  for (const messageId of ONE_TIME_SUMMARY_REPAIRS) {
-    if ((state.completedSummaryRegenerations || []).includes(messageId)) continue;
-    try {
-      const result = await regenerateSummaryMessage(messageId);
-      console.log(`Resumen ${messageId} regenerado como ${result.replacement.id}.`);
-    } catch (err) {
-      if (err?.code === 10008) {
-        console.log(`Resumen ${messageId} no encontrado; no se requiere reparación.`);
-      } else {
-        console.error(`No se pudo reparar el resumen ${messageId}:`, err);
-      }
-    }
-  }
-}
-
 module.exports = {
   normalizeIdentity,
   multiplierForSummaryName,
   repairSummaryDescription,
   regenerateSummaryMessage,
-  runPendingSummaryRepairs,
 };

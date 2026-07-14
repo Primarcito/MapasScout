@@ -14,7 +14,6 @@ const { canScout } = require('./permissions');
 const { sendCreatorMessage } = require('./utils/creatorMessages');
 const { sincronizarMensajeAlertas } = require('./utils/alerts');
 const { startRevisionRounds, beginRevisionRound } = require('./utils/revisionRounds');
-const { runPendingSummaryRepairs } = require('./utils/dailySummary');
 
 /* ================= CARGAR DATOS PERSISTIDOS ================= */
 
@@ -170,7 +169,6 @@ client.once("clientReady", async () => {
     console.log('Ronda residual descartada al iniciar; se esperará a /revisar.');
     await actualizarRevision();
   }
-  await runPendingSummaryRepairs();
   await sincronizarMensajeAlertas();
 
   // Mantener tiempos, prefijos de alerta y mensaje consolidado al día.

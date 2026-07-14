@@ -1,7 +1,7 @@
-const { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require('discord.js');
 const state = require('../data/state');
 const config = require('../config');
-const { canScout, canUseAdmin } = require('../permissions');
+const { canScout, canUseAdmin, canManageMaps, canManageSensitiveScoutData } = require('../permissions');
 const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/persistence');
 const { respuestaCiudades, respuestaMapas } = require('../components/panelComponents');
 const { componentesRevision } = require('../components/revisionComponents');
@@ -9,15 +9,178 @@ const { generarEmbedRevision } = require('../embeds/revisionEmbed');
 const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { verificarMapaVacio } = require('../utils/alerts');
-const { isVerificationButton, handleVerificationButton, cancelScoutVerification } = require('../utils/verification');
+const { isVerificationButton, handleVerificationButton, cancelScoutVerification, normalizeVerificationMode } = require('../utils/verification');
 const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
 const { tickRevisionRound, getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
 const { payloadAjusteMultiplier } = require('../components/revisionMultiplierComponents');
+const { mapConfigPanel, mapListEmbed, confirmClearMaps } = require('../components/mapConfigComponents');
+const { adminPanel, activeScoutsEmbed, verificationQueueEmbed, auditEmbed, verificationModePanel } = require('../components/adminComponents');
+const { userPicker, multipliersPanel } = require('../utils/adminActions');
+const { takePendingMapChanges, applyMapChanges, scheduleMapChanges, clearScheduledMaps, clearActiveMaps } = require('../utils/mapManagement');
+const { addAuditEntry } = require('../utils/audit');
+const { regenerateSummaryMessage } = require('../utils/dailySummary');
+
+function backRow(customId = 'admin_home') {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(customId).setLabel('Volver').setStyle(ButtonStyle.Secondary)
+  );
+}
 
 module.exports = async function handleButton(interaction) {
 
   if (isVerificationButton(interaction.customId)) {
     return handleVerificationButton(interaction);
+  }
+
+  /* ===== CONFIGURACIÓN DE MAPAS ===== */
+
+  if (interaction.customId.startsWith('map_config_') || interaction.customId.startsWith('map_changes_')) {
+    if (!canManageMaps(interaction.member)) {
+      return interaction.reply({ content: 'No tienes permiso para configurar mapas.', flags: MessageFlags.Ephemeral });
+    }
+
+    if (interaction.customId === 'map_config_home') return interaction.update(mapConfigPanel());
+
+    if (interaction.customId === 'map_config_import') {
+      const input = new TextInputBuilder()
+        .setCustomId('mapas_bulk_input')
+        .setLabel('Ciudades y mapas')
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('Thetford:\nDeathwisp Sink\n\nLymhurst:\nHigh Tree Isle')
+        .setRequired(true);
+      const modal = new ModalBuilder()
+        .setCustomId('modal_cargar_mapas')
+        .setTitle('Importar mapas')
+        .addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
+
+    if (interaction.customId === 'map_config_edit') {
+      const select = new StringSelectMenuBuilder()
+        .setCustomId('editar_ciudad')
+        .setPlaceholder('Selecciona una ciudad')
+        .addOptions(Object.keys(state.mapas).map(city => ({ label: city, value: city })));
+      return interaction.update({
+        embeds: [new EmbedBuilder().setTitle('Editar ciudad').setDescription('Selecciona la ciudad cuya lista completa deseas editar.').setColor(0x3498db)],
+        components: [new ActionRowBuilder().addComponents(select), backRow('map_config_home')],
+      });
+    }
+
+    if (interaction.customId === 'map_config_active') {
+      return interaction.update({ embeds: [mapListEmbed('Mapas activos', state.mapas)], components: [backRow('map_config_home')] });
+    }
+    if (interaction.customId === 'map_config_scheduled') {
+      const maps = state.scheduledMaps?.maps;
+      return interaction.update({
+        embeds: [maps ? mapListEmbed('Próximo período · 10 UTC', maps) : new EmbedBuilder().setTitle('Próximo período').setDescription('No hay mapas programados.').setColor(0x95a5a6)],
+        components: [backRow('map_config_home')],
+      });
+    }
+    if (interaction.customId === 'map_config_cancel_scheduled') {
+      clearScheduledMaps({ id: interaction.user.id, name: interaction.user.username });
+      return interaction.update(mapConfigPanel());
+    }
+    if (interaction.customId === 'map_config_clear') return interaction.update(confirmClearMaps());
+    if (interaction.customId === 'map_config_clear_confirm') {
+      await interaction.deferUpdate();
+      await clearActiveMaps({ id: interaction.user.id, name: interaction.user.username });
+      return interaction.editReply({ content: '✅ Mapas activos vaciados correctamente.', ...mapConfigPanel() });
+    }
+
+    if (interaction.customId === 'map_changes_cancel') {
+      takePendingMapChanges(interaction.user.id);
+      return interaction.update(mapConfigPanel());
+    }
+    if (interaction.customId === 'map_changes_apply' || interaction.customId === 'map_changes_schedule') {
+      const pending = takePendingMapChanges(interaction.user.id);
+      if (!pending) {
+        return interaction.update({ content: 'La vista previa venció. Abre nuevamente la configuración.', embeds: [], components: [backRow('map_config_home')] });
+      }
+      if (interaction.customId === 'map_changes_schedule') {
+        scheduleMapChanges(pending.changes, { id: interaction.user.id, name: interaction.user.username });
+        return interaction.update({ content: '✅ Configuración programada para el próximo cierre de las 10 UTC.', ...mapConfigPanel() });
+      }
+      await interaction.deferUpdate();
+      const result = await applyMapChanges(pending.changes, { id: interaction.user.id, name: interaction.user.username });
+      return interaction.editReply({ content: `✅ Cambios aplicados. Scouts afectados: **${result.affectedUsers.length}**.`, ...mapConfigPanel() });
+    }
+  }
+
+  /* ===== PANEL ADMINISTRATIVO ===== */
+
+  if (interaction.customId === 'admin_home') {
+    if (!canUseAdmin(interaction.member)) return interaction.reply({ content: 'No tienes permiso.', flags: MessageFlags.Ephemeral });
+    return interaction.update(adminPanel({ sensitive: canManageSensitiveScoutData(interaction.member) }));
+  }
+
+  if (interaction.customId.startsWith('admin_')) {
+    if (!canUseAdmin(interaction.member)) {
+      return interaction.reply({ content: 'No tienes permiso para operar MapasBot.', flags: MessageFlags.Ephemeral });
+    }
+    const sensitive = canManageSensitiveScoutData(interaction.member);
+    if (interaction.customId === 'admin_active_scouts') {
+      return interaction.update({ embeds: [activeScoutsEmbed()], components: [backRow()] });
+    }
+    if (interaction.customId === 'admin_remove_scout') {
+      return interaction.update({
+        embeds: [new EmbedBuilder().setTitle('Retirar scout').setDescription('Selecciona un scout activo.').setColor(0xed4245)],
+        components: [userPicker('select_admin_remove_scout', 'Selecciona un scout'), backRow()],
+      });
+    }
+    if (interaction.customId === 'admin_force_verify') {
+      return interaction.update({
+        embeds: [new EmbedBuilder().setTitle('Enviar verificación').setDescription('Selecciona un scout activo.').setColor(0xf1c40f)],
+        components: [userPicker('select_admin_force_verify', 'Selecciona un scout'), backRow()],
+      });
+    }
+    if (interaction.customId === 'admin_verification_queue') {
+      return interaction.update({ embeds: [verificationQueueEmbed()], components: [backRow()] });
+    }
+    if (interaction.customId === 'admin_audit') {
+      return interaction.update({ embeds: [auditEmbed()], components: [backRow()] });
+    }
+
+    if (!sensitive) {
+      return interaction.reply({ content: 'Esta acción requiere rol GM u Officer.', flags: MessageFlags.Ephemeral });
+    }
+    if (interaction.customId === 'admin_assign_hours') {
+      return interaction.update({
+        embeds: [new EmbedBuilder().setTitle('Asignar o restar horas').setDescription('Selecciona un scout y luego indica el ajuste.').setColor(0x5865f2)],
+        components: [userPicker('select_admin_assign_hours', 'Selecciona un scout'), backRow()],
+      });
+    }
+    if (interaction.customId === 'admin_multipliers') {
+      await interaction.deferUpdate();
+      return interaction.editReply(await multipliersPanel(interaction));
+    }
+    if (interaction.customId === 'admin_revision_control') {
+      const round = state.revisionRound;
+      const description = round
+        ? `Ronda activa hasta <t:${Math.floor(round.endsAt / 1000)}:R>. Puedes detenerla sin aplicar penalizaciones.`
+        : 'No hay una ronda activa.';
+      return interaction.update({
+        embeds: [new EmbedBuilder().setTitle('Control de revisiones').setDescription(description).setColor(round ? 0xf1c40f : 0x57f287)],
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('admin_revision_reset_confirm').setLabel('Detener y limpiar').setStyle(ButtonStyle.Danger).setDisabled(!round),
+          new ButtonBuilder().setCustomId('admin_home').setLabel('Volver').setStyle(ButtonStyle.Secondary),
+        )],
+      });
+    }
+    if (interaction.customId === 'admin_revision_reset_confirm') {
+      state.revisionRound = null;
+      state.revisionEstado = {};
+      guardarRevisionPanel();
+      await actualizarRevision();
+      addAuditEntry({ actorId: interaction.user.id, actorName: interaction.user.username, action: 'detuvo y limpio la ronda de revision' });
+      return interaction.update({ embeds: [new EmbedBuilder().setTitle('Revisión detenida').setDescription('La ronda fue cancelada sin aplicar penalizaciones.').setColor(0x57f287)], components: [backRow()] });
+    }
+    if (interaction.customId === 'admin_verification_mode') return interaction.update(verificationModePanel());
+    if (interaction.customId === 'admin_verification_mode_photo' || interaction.customId === 'admin_verification_mode_normal') {
+      state.verificationMode = normalizeVerificationMode(interaction.customId.endsWith('normal') ? 'normal' : 'foto');
+      guardarDatos();
+      addAuditEntry({ actorId: interaction.user.id, actorName: interaction.user.username, action: `cambio el modo de verificacion a ${state.verificationMode}` });
+      return interaction.update(verificationModePanel());
+    }
   }
 
   /* ===== ABRIR ANOTARSE ===== */
@@ -42,8 +205,36 @@ module.exports = async function handleButton(interaction) {
   /* ===== MULTIPLICADORES DE REVISIÓN ===== */
 
   if (interaction.customId === 'revision_regenerate_summary') {
-    if (!canUseAdmin(interaction.member)) {
-      return interaction.reply({ content: 'No tienes permiso de admin.', flags: MessageFlags.Ephemeral });
+    if (!canManageSensitiveScoutData(interaction.member)) {
+      return interaction.reply({ content: 'Esta acción requiere rol GM u Officer.', flags: MessageFlags.Ephemeral });
+    }
+    if (!state.lastArchivedSummaryMessageId) {
+      const input = new TextInputBuilder()
+        .setCustomId('summary_message_id')
+        .setLabel('ID del resumen que será reemplazado')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      return interaction.showModal(new ModalBuilder()
+        .setCustomId('modal_revision_regenerate_summary')
+        .setTitle('Regenerar resumen diario')
+        .addComponents(new ActionRowBuilder().addComponents(input)));
+    }
+    return interaction.update({
+      embeds: [new EmbedBuilder()
+        .setTitle('Regenerar último resumen')
+        .setColor(0xf1c40f)
+        .setDescription(`Se reemplazará el resumen guardado con ID \`${state.lastArchivedSummaryMessageId}\` usando los multiplicadores actuales.`)],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('revision_regenerate_summary_confirm').setLabel('Confirmar').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('revision_regenerate_summary_other').setLabel('Elegir otro').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('admin_home').setLabel('Cancelar').setStyle(ButtonStyle.Secondary),
+      )],
+    });
+  }
+
+  if (interaction.customId === 'revision_regenerate_summary_other') {
+    if (!canManageSensitiveScoutData(interaction.member)) {
+      return interaction.reply({ content: 'Esta acción requiere rol GM u Officer.', flags: MessageFlags.Ephemeral });
     }
     const input = new TextInputBuilder()
       .setCustomId('summary_message_id')
@@ -59,10 +250,27 @@ module.exports = async function handleButton(interaction) {
     return interaction.showModal(modal);
   }
 
+  if (interaction.customId === 'revision_regenerate_summary_confirm') {
+    if (!canManageSensitiveScoutData(interaction.member)) {
+      return interaction.reply({ content: 'Esta acción requiere rol GM u Officer.', flags: MessageFlags.Ephemeral });
+    }
+    const messageId = state.lastArchivedSummaryMessageId;
+    if (!messageId) return interaction.update({ content: 'No hay un resumen archivado para regenerar.', embeds: [], components: [backRow()] });
+    await interaction.deferUpdate();
+    try {
+      const result = await regenerateSummaryMessage(messageId);
+      const url = `https://discord.com/channels/${interaction.guildId}/${result.replacement.channel.id}/${result.replacement.id}`;
+      addAuditEntry({ actorId: interaction.user.id, actorName: interaction.user.username, action: 'regenero el ultimo resumen diario', details: { oldMessageId: messageId, newMessageId: result.replacement.id } });
+      return interaction.editReply({ content: `✅ [Resumen regenerado](${url}).`, embeds: [], components: [backRow()] });
+    } catch (err) {
+      return interaction.editReply({ content: `No se pudo regenerar: ${err.message || err}`, embeds: [], components: [backRow()] });
+    }
+  }
+
   const multiplierButton = /^revision_mult_(down|up|exact)_(\d+)$/.exec(interaction.customId);
   if (multiplierButton) {
-    if (!canUseAdmin(interaction.member)) {
-      return interaction.reply({ content: 'No tienes permiso de admin.', flags: MessageFlags.Ephemeral });
+    if (!canManageSensitiveScoutData(interaction.member)) {
+      return interaction.reply({ content: 'Esta acción requiere rol GM u Officer.', flags: MessageFlags.Ephemeral });
     }
     const [, action, userId] = multiplierButton;
     const score = state.revisionScores[userId] || {
@@ -91,6 +299,7 @@ module.exports = async function handleButton(interaction) {
     const minimum = revisionConfig().minimumMultiplier;
     score.manualMultiplier = Math.max(minimum, Math.min(1, Math.round((getRevisionMultiplier(userId) + delta) * 100) / 100));
     guardarRevisionPanel();
+    addAuditEntry({ actorId: interaction.user.id, actorName: interaction.user.username, action: `ajusto el multiplicador a x${score.manualMultiplier.toFixed(2)}`, targetId: userId });
     return interaction.update({ content: null, ...payloadAjusteMultiplier(userId) });
   }
 
@@ -360,7 +569,7 @@ module.exports = async function handleButton(interaction) {
     }
 
     // Verificar rol Scout
-    if (!canScout(interaction.member)) {
+    if (!canScout(interaction.member) && !canUseAdmin(interaction.member)) {
       return interaction.editReply({ content: "Necesitas el rol Scout para marcar mapas." });
     }
 
