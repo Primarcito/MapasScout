@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 const state = require('../data/state');
 const permissions = require('../permissions');
 const mapasCommand = require('../commands/mapas');
+const configurarCommand = require('../commands/mapasConfigurar');
 const scoutCommand = require('../commands/scout');
+const exportarCommand = require('../commands/mapasExportar');
 const adminCommand = require('../commands/admin');
 const { parseBulkMapInput, mapChangesDiff } = require('../utils/mapManagement');
 const { cerrarScoutsActivosFiltrados } = require('../utils/scouts');
@@ -24,11 +26,13 @@ test('la jerarquia separa prio operativo de GM u Officer', () => {
   assert.equal(permissions.canManageSensitiveScoutData(senior), true);
 });
 
-test('solo quedan los subcomandos consolidados acordados', () => {
-  const options = command => command.data.toJSON().options.map(option => option.name);
-  assert.deepEqual(options(mapasCommand), ['panel', 'configurar']);
-  assert.deepEqual(options(scoutCommand), ['historial', 'exportar']);
-  assert.deepEqual(options(adminCommand), ['panel']);
+test('los comandos usan palabras individuales con el prefijo mapas', () => {
+  const names = [mapasCommand, configurarCommand, scoutCommand, exportarCommand, adminCommand]
+    .map(command => command.data.toJSON().name);
+  assert.deepEqual(names, ['mapas', 'mapas-configurar', 'mapas-historial', 'mapas-exportar', 'mapas-gestionar']);
+  for (const command of [mapasCommand, configurarCommand, scoutCommand, exportarCommand, adminCommand]) {
+    assert.equal(command.data.toJSON().options?.length || 0, 0);
+  }
 });
 
 test('el panel operativo no muestra acciones sensibles', () => {

@@ -3,7 +3,9 @@ const config = require('../config');
 
 const commandFiles = [
   require('./mapas'),
+  require('./mapasConfigurar'),
   require('./scout'),
+  require('./mapasExportar'),
   require('./admin'),
   require('./revisar')
 ];

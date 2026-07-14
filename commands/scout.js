@@ -1,6 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const state = require('../data/state');
-const { canExport } = require('../permissions');
 const { calcularTiempoReal } = require('../utils/timeCalc');
 const { getRevisionMultiplier } = require('../utils/revisionRounds');
 
@@ -199,61 +198,15 @@ function sesionesExportables(now = Date.now()) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("scout")
-    .setDescription("Historial y exportación de actividad scout")
-    .addSubcommand(subcmd => 
-      subcmd.setName("historial")
-        .setDescription("Ver el resumen y ranking de scouts del día")
-    )
-    .addSubcommand(subcmd => 
-      subcmd.setName("exportar")
-        .setDescription("Exportar el historial del día como CSV (solo líderes)")
-    ),
+    .setName('mapas-historial')
+    .setDescription('Ver el resumen y ranking de scouts del día'),
 
   generarEmbedHistorial,
   generarEmbedsHistorial,
+  csvCell,
+  sesionesExportables,
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-
-    /* ===== HISTORIAL ===== */
-    if (sub === "historial") {
-      const embeds = generarEmbedsHistorial();
-      return enviarEmbedsPaginados(interaction, embeds);
-    }
-
-    /* ===== EXPORTAR ===== */
-    if (sub === "exportar") {
-      if (!canExport(interaction.member)) {
-        return interaction.reply({
-          content: "Necesitas el rol Líder para usar este comando.",
-          flags: MessageFlags.Ephemeral
-        });
-      }
-
-      const sesiones = sesionesExportables();
-      if (sesiones.length === 0) {
-        return interaction.reply({
-          content: "No hay actividad registrada hoy.",
-          flags: MessageFlags.Ephemeral
-        });
-      }
-
-      const fecha = new Date().toISOString().split("T")[0];
-      let csv = "Usuario,Mapa,Ciudad,Entrada UTC,Salida UTC,Duracion (min)\n";
-      sesiones.forEach(s => {
-        const entrada = new Date(s.inicio).toISOString().replace("T", " ").slice(0, 19);
-        const salida = s.fin ? new Date(s.fin).toISOString().replace("T", " ").slice(0, 19) : "activo";
-        csv += [s.username || s.userId, s.mapa, s.ciudad, entrada, salida, s.duracionMin].map(csvCell).join(',') + '\n';
-      });
-
-      const buffer = Buffer.from(csv, "utf-8");
-
-      return interaction.reply({
-        content: `📊 Historial del día ${fecha}`,
-        files: [{ attachment: buffer, name: `historial_${fecha}.csv` }],
-        flags: MessageFlags.Ephemeral
-      });
-    }
+    return enviarEmbedsPaginados(interaction, generarEmbedsHistorial());
   }
 };

@@ -4,11 +4,8 @@ const { adminPanel } = require('../components/adminComponents');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('admin')
-    .setDescription('Administración de MapasBot')
-    .addSubcommand(subcommand => subcommand
-      .setName('panel')
-      .setDescription('Abrir el panel administrativo según tu jerarquía')),
+    .setName('mapas-gestionar')
+    .setDescription('Abrir la administración de MapasBot según tu jerarquía'),
 
   async execute(interaction) {
     if (!canUseAdmin(interaction.member)) {

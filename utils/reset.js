@@ -87,7 +87,7 @@ async function ejecutarReset() {
   if (state.panelMessage) {
     try {
       await state.panelMessage.channel.send(
-        `🔄 **Cierre diario completado** — ${Object.values(state.mapas).flat().length > 0 ? 'Se activaron los mapas programados.' : 'Los mapas quedaron vacíos; usa `/mapas configurar`.'}`
+        `🔄 **Cierre diario completado** — ${Object.values(state.mapas).flat().length > 0 ? 'Se activaron los mapas programados.' : 'Los mapas quedaron vacíos; usa `/mapas-configurar`.'}`
       );
     } catch (err) {
       console.error("Error enviando aviso de reset:", err);
