@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const state = require('../data/state');
 const { calcularTiempoReal } = require('../utils/timeCalc');
 const { getRevisionMultiplier } = require('../utils/revisionRounds');
+const { projectDailyMapCredits } = require('../utils/mapCredits');
 
 const EMBED_SAFE_DESCRIPTION_LIMIT = 3900;
 
@@ -44,11 +45,12 @@ function dividirEnEmbedsHistorial(header, lines, footer) {
   ));
 }
 
-function generarEmbedHistorial() {
-  return generarEmbedsHistorial()[0];
+function generarEmbedHistorial(now = Date.now()) {
+  return generarEmbedsHistorial(now)[0];
 }
 
-function generarEmbedsHistorial() {
+function generarEmbedsHistorial(summaryNow = Date.now()) {
+  const mapCredits = projectDailyMapCredits(summaryNow);
   // Combinar historialDia con sesiones activas
   const todasSesiones = [...state.historialDia];
 
@@ -61,7 +63,7 @@ function generarEmbedsHistorial() {
         ciudad: entry.ciudad,
         mapa: entry.mapa,
         inicio: entry.inicio,
-        fin: Date.now() // Treat active as ending now for calculation
+        fin: summaryNow // Treat active as ending now for calculation
       });
     });
   }
@@ -119,7 +121,7 @@ function generarEmbedsHistorial() {
     const horas = Math.floor(u.totalMin / 60);
     const mins = u.totalMin % 60;
     const tiempo = horas > 0 ? `${horas}h ${mins}m` : `${mins}m`;
-    const numMapas = u.mapasUnicos.size;
+    const numMapas = mapCredits[u.userId]?.validMaps || 0;
     const estado = u.activo ? "🟢" : "⚪";
     const medalla = index < 3 ? medallas[index] : `${index + 1}.`;
 

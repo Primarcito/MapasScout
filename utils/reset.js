@@ -7,6 +7,7 @@ const { generarEmbedsHistorial } = require('../commands/scout');
 const { cancelScoutVerification } = require('./verification');
 const config = require('../config');
 const { addAuditEntry } = require('./audit');
+const { commitDailyMapCredits } = require('./mapCredits');
 
 function programarReset() {
   const ahora = new Date();
@@ -33,13 +34,14 @@ function programarReset() {
 
 async function ejecutarReset() {
   console.log("Ejecutando reset diario...");
+  const resetAt = Date.now();
 
   // Auto-postear historial antes de borrar
   try {
     if (config.ARCHIVE_CHANNEL_ID && state.client) {
       const canalArchivo = await state.client.channels.fetch(config.ARCHIVE_CHANNEL_ID);
       if (canalArchivo) {
-        const embedsHistorial = generarEmbedsHistorial();
+        const embedsHistorial = generarEmbedsHistorial(resetAt);
         for (const embedHistorial of embedsHistorial) {
           const archived = await canalArchivo.send({ embeds: [embedHistorial] });
           state.lastArchivedSummaryMessageId = archived.id;
@@ -51,6 +53,11 @@ async function ejecutarReset() {
   } catch (err) {
     console.error("Error archivando historial diario:", err);
   }
+
+  // Consolidar minutos por mapa una sola vez después de publicar el resumen.
+  commitDailyMapCredits(resetAt);
+  // El ranking semanal reinicia los lunes a las 10 UTC; los pendientes no cruzan semana.
+  if (new Date(resetAt).getUTCDay() === 1) state.mapMinuteBalances = {};
 
   // Cerrar el periodo anterior antes de activar la configuracion siguiente.
   for (const userId in state.scoutsActivos) {

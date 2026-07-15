@@ -58,6 +58,7 @@ function guardarScouts() {
       verificaciones: state.verificacionesScout,
       logAdmin: state.logAdmin,
       coberturaDia: state.coberturaDia,
+      mapMinuteBalances: state.mapMinuteBalances,
     }, null, 2)
   );
 }
@@ -77,6 +78,7 @@ function cargarScouts() {
     state.verificacionesScout = data.verificaciones || {};
     state.logAdmin = data.logAdmin || [];
     state.coberturaDia = data.coberturaDia || {};
+    state.mapMinuteBalances = data.mapMinuteBalances || {};
   }
 }
 
