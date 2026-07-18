@@ -16,7 +16,11 @@ const {
   discardResidualRevisionState,
 } = require('../utils/revisionRounds');
 const { calculatePhotoPenaltyMs, rollbackProvisionalCredit } = require('../utils/verification');
-const { crearPanelRevisionMovil, actualizarRevision } = require('../utils/panel');
+const {
+  crearPanelRevisionMovil,
+  actualizarRevision,
+  republicarPanelPrincipal,
+} = require('../utils/panel');
 const { componentesRevision } = require('../components/revisionComponents');
 const { repairSummaryDescription, regenerateSummaryMessage } = require('../utils/dailySummary');
 const { generarEmbedsHistorial } = require('../commands/scout');
@@ -299,27 +303,103 @@ test('rechazar una captura elimina únicamente su crédito provisional', () => {
 
 test('el panel móvil reemplaza al anterior y conserva uno solo', async () => {
   let deleted = 0;
+  let sentPayload = null;
   const oldMessage = { async delete() { deleted++; } };
   const newMessage = { id: 'nuevo', channel: { id: 'canal-b' } };
   const channel = {
     id: 'canal-b',
-    async send() { return newMessage; },
+    async send(payload) {
+      sentPayload = payload;
+      return newMessage;
+    },
   };
   Object.assign(state, {
     client: {},
     mapas: {},
     registros: {},
     revisionEstado: {},
-    revisionRound: null,
+    revisionRound: { startedAt: Date.now(), endsAt: Date.now() + 10 * 60_000 },
     revisionMobileMessage: oldMessage,
     revisionMobileMessageId: 'viejo',
     revisionMobileChannelId: 'canal-a',
   });
 
-  await crearPanelRevisionMovil(channel);
+  await crearPanelRevisionMovil(channel, { mentionRole: true, created: false });
   assert.equal(deleted, 1);
   assert.equal(state.revisionMobileMessageId, 'nuevo');
   assert.equal(state.revisionMobileChannelId, 'canal-b');
+  assert.match(sentPayload.content, /<@&1435778823743340651>/);
+  assert.deepEqual(sentPayload.allowedMentions.roles, ['1435778823743340651']);
+});
+
+test('revisar en el canal fijo reemplaza el panel y vuelve a etiquetar a Scouts', async () => {
+  let deleted = 0;
+  let sentPayload = null;
+  const channel = {
+    id: '1505951463460044913',
+    async send(payload) {
+      sentPayload = payload;
+      return { id: 'revision-nueva', channel };
+    },
+  };
+  Object.assign(state, {
+    mapas: {},
+    registros: {},
+    revisionEstado: {},
+    revisionRound: { startedAt: Date.now(), endsAt: Date.now() + 20 * 60_000 },
+    revisionMessage: { async delete() { deleted++; } },
+    revisionMessageId: 'revision-vieja',
+    client: { channels: { async fetch() { return channel; } } },
+  });
+
+  await crearPanelRevisionMovil(channel, { mentionRole: true, created: true });
+  assert.equal(deleted, 1);
+  assert.equal(state.revisionMessageId, 'revision-nueva');
+  assert.match(sentPayload.content, /Nueva ronda/);
+  assert.match(sentPayload.content, /<@&1435778823743340651>/);
+});
+
+test('el comando puede integrar el ping en el panel sin enviar un aviso separado', async () => {
+  let sends = 0;
+  state.mapas = { Lymhurst: ['Mapa'] };
+  state.registros = { Lymhurst: { Mapa: ['1'] } };
+  state.revisionRound = null;
+  state.revisionEstado = {};
+  state.revisionMessage = null;
+  state.revisionMobileMessage = null;
+  state.client = {
+    channels: { async fetch() { return { async send() { sends++; } }; } },
+  };
+
+  const result = await beginRevisionRound(Date.now(), { announce: false });
+  assert.equal(result.created, true);
+  assert.equal(sends, 0);
+});
+
+test('el panel principal se reemplaza y solo conserva el mensaje nuevo', async () => {
+  let deleted = 0;
+  let sends = 0;
+  const channel = {
+    id: '1435778824775274578',
+    async send() {
+      sends++;
+      return { id: 'panel-nuevo', channel };
+    },
+  };
+  Object.assign(state, {
+    mapas: {},
+    registros: {},
+    panelMessage: { async delete() { deleted++; } },
+    panelMessageId: 'panel-viejo',
+    panelChannelId: channel.id,
+  });
+
+  const result = await republicarPanelPrincipal(channel);
+  assert.equal(deleted, 1);
+  assert.equal(sends, 1);
+  assert.equal(result.id, 'panel-nuevo');
+  assert.equal(state.panelMessageId, 'panel-nuevo');
+  assert.equal(state.panelChannelId, channel.id);
 });
 
 test('actualizar revisión no publica paneles nuevos automáticamente', async () => {

@@ -6,15 +6,17 @@ Bot de operación de mapas, sesiones de scouts, revisiones y verificaciones.
 
 | Comando | Acceso | Objetivo |
 | --- | --- | --- |
-| `/mapas` | General | Publicar nuevamente el panel principal en el canal actual. |
+| `/mapas` | General | Publicar nuevamente el panel principal en el canal de Mapas. |
 | `/mapas-configurar` | Prio y superiores | Importar, editar, programar o vaciar mapas con vista previa. |
-| `/revisar` | Scout y superiores | Iniciar una ronda o actualizar/mover el panel de la ronda activa. |
+| `/revisar` | Scout y superiores | Publicar un panel nuevo, avisar a Scouts e iniciar o continuar la ronda. |
 | `!revisar` | Scout y superiores | Alias de texto de `/revisar`. |
 | `/mapas-historial` | General | Consultar el resumen operativo del día. |
 | `/mapas-exportar` | Líder | Exportar sesiones cerradas y activas como CSV. |
 | `/mapas-gestionar` | Prio y superiores | Abrir las herramientas permitidas por la jerarquía del usuario. |
 
 `/scout revisar` dejó de registrarse porque duplicaba exactamente `/revisar`. La función permanece disponible mediante `/revisar` y `!revisar`.
+
+El panel principal se publica nuevamente al iniciar el bot y, si hay conversación en el canal de Mapas, vuelve al final después de una pausa. Solo se conserva un panel activo. Cada uso de `/revisar` o `!revisar` también crea un mensaje nuevo y etiqueta al rol Scout.
 
 ## Jerarquía
 

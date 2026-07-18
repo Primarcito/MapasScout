@@ -1,13 +1,18 @@
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const config = require('./config');
 const state = require('./data/state');
-const { cargarDatos, cargarScouts, cargarPanel, cargarRevisionPanel, guardarPanel, guardarRevisionPanel } = require('./data/persistence');
+const { cargarDatos, cargarScouts, cargarPanel, cargarRevisionPanel, guardarRevisionPanel } = require('./data/persistence');
 const { registerCommands, getCommandsMap } = require('./commands/register');
 const handleButton = require('./handlers/buttonHandler');
 const handleSelect = require('./handlers/selectHandler');
 const handleModal = require('./handlers/modalHandler');
 const { programarReset } = require('./utils/reset');
-const { actualizarPanel, actualizarRevision, crearPanelRevisionMovil } = require('./utils/panel');
+const {
+  actualizarPanel,
+  actualizarRevision,
+  crearPanelRevisionMovil,
+  republicarPanelPrincipal,
+} = require('./utils/panel');
 const { startScoutVerification, isVerificationButton, handleVerificationScreenshotMessage } = require('./utils/verification');
 const { startApiServer } = require('./api');
 const { canScout } = require('./permissions');
@@ -36,6 +41,22 @@ const client = new Client({
 });
 
 state.client = client;
+
+let mapsPanelRepostTimer = null;
+
+function programarRepublicacionPanelMapas(channel) {
+  if (!channel?.send || channel.id !== config.MAPS_CHANNEL_ID) return;
+  if (mapsPanelRepostTimer) clearTimeout(mapsPanelRepostTimer);
+
+  mapsPanelRepostTimer = setTimeout(async () => {
+    mapsPanelRepostTimer = null;
+    try {
+      await republicarPanelPrincipal(channel);
+    } catch (err) {
+      console.error('No se pudo devolver el panel principal al final del canal:', err);
+    }
+  }, config.MAPS_PANEL_REPOST_DELAY_MS);
+}
 
 /* ================= REGISTRAR SLASH COMMANDS ================= */
 
@@ -75,14 +96,16 @@ client.on("messageCreate", async message => {
     return;
   }
 
+  programarRepublicacionPanelMapas(message.channel);
+
   if (message.content.trim().toLowerCase() !== "!revisar") return;
 
   if (!canScout(message.member)) {
     return message.reply("Necesitas el rol Scout para usar este comando.");
   }
 
-  await beginRevisionRound();
-  await crearPanelRevisionMovil(message.channel);
+  const { created } = await beginRevisionRound(Date.now(), { announce: false });
+  await crearPanelRevisionMovil(message.channel, { mentionRole: true, created });
 
   try { await message.delete(); } catch (e) {}
 });
@@ -108,27 +131,11 @@ client.once("clientReady", async () => {
   }
 
   try {
-    if (state.panelChannelId && state.panelMessageId) {
-      const channel = await client.channels.fetch(state.panelChannelId);
-      state.panelMessage = await channel.messages.fetch(state.panelMessageId);
-      console.log("Panel recuperado correctamente");
-    } else if (state.panelChannelId) {
-      await actualizarPanel();
-    }
+    const mapsChannel = await client.channels.fetch(config.MAPS_CHANNEL_ID);
+    await republicarPanelPrincipal(mapsChannel);
+    console.log('Panel principal publicado al final del canal de mapas');
   } catch (err) {
-    if (err?.code === 10008 && state.panelChannelId) {
-      console.log("Panel guardado no encontrado, recreando en el mismo canal...");
-      state.panelMessage = null;
-      state.panelMessageId = null;
-      await actualizarPanel();
-    } else {
-      console.log("No se pudo recuperar el panel:", err.message);
-      state.panelChannelId = null;
-      state.panelMessageId = null;
-      state.panelMessage = null;
-      guardarPanel();
-      console.log("Panel.json limpiado, usar /mapas panel para recrear.");
-    }
+    console.error('No se pudo publicar el panel principal en el canal de mapas:', err);
   }
 
   // Recuperar el panel de revisión si ya existe. Nunca publicarlo por un redeploy.

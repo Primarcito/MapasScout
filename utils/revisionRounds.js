@@ -51,20 +51,22 @@ function startRevisionRound(now = Date.now()) {
   return state.revisionRound;
 }
 
-async function beginRevisionRound(now = Date.now()) {
+async function beginRevisionRound(now = Date.now(), { announce = true } = {}) {
   if (state.revisionRound && state.revisionRound.endsAt > now) {
     return { round: state.revisionRound, created: false };
   }
 
   const round = startRevisionRound(now);
-  try {
-    const channel = await getRevisionChannel();
-    await channel?.send({
-      content: `${config.SCOUT_ROLE_MENTIONS} ${textEmoji('REVIEW')} **Nueva ronda de revisión**\nTienen **${revisionConfig().roundMinutes} minutos** para revisar los mapas.`,
-      allowedMentions: { roles: config.SCOUT_ROLE_IDS },
-    });
-  } catch (err) {
-    console.error('No se pudo avisar al rol Scout sobre la ronda:', err);
+  if (announce) {
+    try {
+      const channel = await getRevisionChannel();
+      await channel?.send({
+        content: `${config.SCOUT_ROLE_MENTIONS} ${textEmoji('REVIEW')} **Nueva ronda de revisión**\nTienen **${revisionConfig().roundMinutes} minutos** para revisar los mapas.`,
+        allowedMentions: { roles: config.SCOUT_ROLE_IDS },
+      });
+    } catch (err) {
+      console.error('No se pudo avisar al rol Scout sobre la ronda:', err);
+    }
   }
   await actualizarRevision();
   return { round, created: true };

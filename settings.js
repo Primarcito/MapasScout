@@ -51,6 +51,9 @@ const SETTINGS = {
   },
 
   channels: {
+    // Canal canonico donde el panel principal se mantiene visible.
+    maps: '1435778824775274578',
+
     // Canal fijo donde vive el panel de revision.
     revision: '1505951463460044913',
 
@@ -96,6 +99,12 @@ const SETTINGS = {
     warningMinutesBeforeEnd: Number(process.env.MAP_REVISION_WARNING_MINUTES || 5),
     penaltyPerMiss: Number(process.env.MAP_REVISION_PENALTY || 0.05),
     minimumMultiplier: Number(process.env.MAP_REVISION_MIN_MULTIPLIER || 0.70),
+  },
+
+  panel: {
+    // Tras una conversacion, espera este tiempo de silencio antes de volver a
+    // colocar el panel principal al final del canal.
+    repostDelaySeconds: Number(process.env.MAPS_PANEL_REPOST_DELAY_SECONDS || 90),
   },
 };
 

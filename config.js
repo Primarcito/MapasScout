@@ -27,6 +27,9 @@ module.exports = {
   LIDER_ROLE_IDS: ROLE_IDS.lider,
 
   REVISION_CHANNEL_ID: settings.channels.revision,
+  MAPS_CHANNEL_ID: settings.channels.maps,
+  MAPS_PANEL_REPOST_DELAY_MS: Math.max(15, Number(settings.panel?.repostDelaySeconds) || 90) * 1000,
+  REVISION_ROUND_MINUTES: Math.max(1, Number(settings.revision?.roundMinutes) || 20),
   ARCHIVE_CHANNEL_ID: settings.channels.archive,
   SCOUT_LOG_CHANNEL_ID: settings.channels.scoutLog,
 

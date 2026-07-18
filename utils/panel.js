@@ -6,6 +6,8 @@ const { componentesPanel } = require('../components/panelComponents');
 const { componentesRevision } = require('../components/revisionComponents');
 const { guardarPanel, guardarRevisionPanel } = require('../data/persistence');
 
+let panelRepublishPromise = null;
+
 function esMensajeDesconocido(err) {
   return err?.code === 10008;
 }
@@ -40,6 +42,42 @@ async function crearPanelPrincipal(channel) {
   guardarPanel();
   console.log("Panel principal creado/recreado");
   return msg;
+}
+
+async function eliminarPanelPrincipalAnterior() {
+  let message = state.panelMessage;
+  if (!message && state.client && state.panelChannelId && state.panelMessageId) {
+    try {
+      const channel = await state.client.channels.fetch(state.panelChannelId);
+      message = await channel?.messages.fetch(state.panelMessageId);
+    } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error('No se pudo recuperar el panel principal anterior:', err);
+    }
+  }
+  if (message) {
+    try { await message.delete(); } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error('No se pudo borrar el panel principal anterior:', err);
+    }
+  }
+  state.panelMessage = null;
+  state.panelMessageId = null;
+  guardarPanel();
+}
+
+async function republicarPanelPrincipal(channel) {
+  if (!channel?.send) return null;
+  if (panelRepublishPromise) return panelRepublishPromise;
+
+  panelRepublishPromise = (async () => {
+    await eliminarPanelPrincipalAnterior();
+    return crearPanelPrincipal(channel);
+  })();
+
+  try {
+    return await panelRepublishPromise;
+  } finally {
+    panelRepublishPromise = null;
+  }
 }
 
 function olvidarMensajePanel() {
@@ -91,16 +129,49 @@ async function actualizarPanel({ recrearSiFalta = true } = {}) {
   }
 }
 
-async function crearPanelRevision() {
+async function eliminarPanelRevisionPermanente() {
+  if (state.revisionMessage) {
+    try { await state.revisionMessage.delete(); } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error('No se pudo borrar el panel permanente de revisión:', err);
+    }
+  } else if (state.client && state.revisionMessageId) {
+    try {
+      const channel = await state.client.channels.fetch(config.REVISION_CHANNEL_ID);
+      const message = await channel?.messages.fetch(state.revisionMessageId);
+      await message?.delete();
+    } catch (err) {
+      if (!esMensajeDesconocido(err)) console.error('No se pudo recuperar el panel permanente anterior:', err);
+    }
+  }
+  state.revisionMessage = null;
+  state.revisionMessageId = null;
+  guardarRevisionPanel();
+}
+
+function revisionInvocationContent(created) {
+  const remaining = state.revisionRound
+    ? Math.max(1, Math.ceil((state.revisionRound.endsAt - Date.now()) / 60000))
+    : config.REVISION_ROUND_MINUTES;
+  const minutes = created ? config.REVISION_ROUND_MINUTES : remaining;
+  return `${config.SCOUT_ROLE_MENTIONS} ${created ? '**Nueva ronda de revisión**' : '**Ronda de revisión actualizada**'} · ${created ? 'Tienen' : 'Quedan'} **${minutes} minutos**.`;
+}
+
+async function crearPanelRevision({ mentionRole = false, created = false } = {}) {
   try {
     const channel = await state.client.channels.fetch(config.REVISION_CHANNEL_ID);
     if (!channel) return;
 
+    await eliminarPanelRevisionPermanente();
     const comps = componentesRevision();
-    const msg = await channel.send({
+    const payload = {
       embeds: [generarEmbedRevision()],
-      components: comps.length > 0 ? comps : []
-    });
+      components: comps.length > 0 ? comps : [],
+    };
+    if (mentionRole) {
+      payload.content = revisionInvocationContent(created);
+      payload.allowedMentions = { roles: config.SCOUT_ROLE_IDS };
+    }
+    const msg = await channel.send(payload);
 
     state.revisionMessage = msg;
     state.revisionMessageId = msg.id;
@@ -131,21 +202,22 @@ async function eliminarPanelRevisionMovil() {
   guardarRevisionPanel();
 }
 
-async function crearPanelRevisionMovil(channel) {
+async function crearPanelRevisionMovil(channel, { mentionRole = false, created = false } = {}) {
   if (!channel?.send) return null;
   if (channel.id === config.REVISION_CHANNEL_ID) {
-    if (state.revisionMessage) {
-      await actualizarRevision();
-      return state.revisionMessage;
-    }
-    return crearPanelRevision();
+    return crearPanelRevision({ mentionRole, created });
   }
   await eliminarPanelRevisionMovil();
   const comps = componentesRevision();
-  const msg = await channel.send({
+  const payload = {
     embeds: [generarEmbedRevision()],
     components: comps.length > 0 ? comps : [],
-  });
+  };
+  if (mentionRole) {
+    payload.content = revisionInvocationContent(created);
+    payload.allowedMentions = { roles: config.SCOUT_ROLE_IDS };
+  }
+  const msg = await channel.send(payload);
   state.revisionMobileMessage = msg;
   state.revisionMobileMessageId = msg.id;
   state.revisionMobileChannelId = msg.channel.id;
@@ -184,5 +256,6 @@ module.exports = {
   crearPanelRevision,
   crearPanelRevisionMovil,
   eliminarPanelRevisionMovil,
+  republicarPanelPrincipal,
   actualizarRevision,
 };

@@ -17,10 +17,10 @@ module.exports = {
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const { created } = await beginRevisionRound();
-    await crearPanelRevisionMovil(interaction.channel);
+    const { created } = await beginRevisionRound(Date.now(), { announce: false });
+    await crearPanelRevisionMovil(interaction.channel, { mentionRole: true, created });
     return interaction.editReply(created
       ? `Ronda de ${revisionConfig().roundMinutes} minutos iniciada y panel de revisión publicado en este canal.`
-      : 'Panel de revisión actualizado en este canal; la ronda actual continúa.');
+      : 'Panel de revisión publicado nuevamente y la ronda actual continúa.');
   },
 };
