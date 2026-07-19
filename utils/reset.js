@@ -32,6 +32,13 @@ function programarReset() {
   }, msHastaReset);
 }
 
+function resetDailyRevisionState() {
+  state.revisionEstado = {};
+  state.revisionRound = null;
+  state.revisionRoundHistory = [];
+  state.revisionScores = {};
+}
+
 async function ejecutarReset() {
   console.log("Ejecutando reset diario...");
   const resetAt = Date.now();
@@ -79,9 +86,7 @@ async function ejecutarReset() {
   state.ultimaEdicion = null;
   state.historialDia = [];
   state.coberturaDia = {};
-  state.revisionEstado = {};
-  state.revisionRound = null;
-  state.revisionRoundHistory = [];
+  resetDailyRevisionState();
 
   guardarDatos();
   guardarScouts();
@@ -104,4 +109,4 @@ async function ejecutarReset() {
   console.log("Reset diario completado.");
 }
 
-module.exports = { programarReset, ejecutarReset };
+module.exports = { programarReset, ejecutarReset, resetDailyRevisionState };

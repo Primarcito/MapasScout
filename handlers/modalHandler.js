@@ -9,6 +9,7 @@ const { parseBulkMapInput, storePendingMapChanges } = require('../utils/mapManag
 const { mapChangesPreview } = require('../components/mapConfigComponents');
 const { asignarTiempoManual } = require('../utils/scouts');
 const { addAuditEntry } = require('../utils/audit');
+const { parseTimeAdjustmentToMinutes } = require('../utils/timeInput');
 
 function formatTime(value) {
   const absolute = Math.abs(value);
@@ -65,14 +66,17 @@ module.exports = async function handleModal(interaction) {
       return interaction.reply({ content: 'Esta acción requiere rol GM u Officer.', flags: MessageFlags.Ephemeral });
     }
     const userId = interaction.customId.replace('modal_admin_assign_hours_', '');
-    const rawHours = interaction.fields.getTextInputValue('hours_value').trim().replace(',', '.');
-    const hours = Number(rawHours);
+    const rawTime = interaction.fields.getTextInputValue('hours_value');
+    const minutes = parseTimeAdjustmentToMinutes(rawTime);
     const reason = interaction.fields.getTextInputValue('hours_reason').trim();
-    if (!Number.isFinite(hours) || hours === 0 || hours < -24 || hours > 24) {
-      return interaction.reply({ content: 'Escribe una cantidad distinta de cero entre -24 y 24 horas.', flags: MessageFlags.Ephemeral });
+    if (!minutes || Math.abs(minutes) > 24 * 60) {
+      return interaction.reply({
+        content: 'Usa horas o minutos entre -24h y 24h. Ejemplos: `1.5h`, `90m`, `1h 30m` o `-45m`.',
+        flags: MessageFlags.Ephemeral,
+      });
     }
     const user = await interaction.client.users.fetch(userId).catch(() => null);
-    const result = asignarTiempoManual(userId, user?.globalName || user?.username || userId, Math.round(hours * 60), interaction.user.id, reason);
+    const result = asignarTiempoManual(userId, user?.globalName || user?.username || userId, minutes, interaction.user.id, reason);
     guardarScouts();
     addAuditEntry({ actorId: interaction.user.id, actorName: interaction.user.username, action: `ajusto ${result.appliedMinutes > 0 ? '+' : ''}${result.appliedMinutes} minutos`, targetId: userId, details: { reason } });
     if (!result.appliedMinutes) {

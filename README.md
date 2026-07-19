@@ -32,7 +32,9 @@ Todas las acciones vuelven a validar permisos al pulsar botones, seleccionar usu
 - Las alertas de mapas vacíos se consolidan en un único mensaje editable.
 - Las rondas comienzan manualmente y cierran automáticamente después de 20 minutos.
 - Un redeploy nunca inicia ni recupera automáticamente una ronda anterior.
-- Las verificaciones se solicitan al completar el bloque configurado y las capturas se aceptan provisionalmente.
+- Las verificaciones usan un único plazo de 10 minutos para pulsar y enviar la foto. La captura recibida a tiempo se acepta provisionalmente, pero su crédito no entra al resumen ni a mapas hasta aprobarse.
+- El cierre de las 10 UTC reinicia los multiplicadores de revisión después de archivar el resumen.
+- Los ajustes administrativos de tiempo aceptan horas o minutos, por ejemplo `1.5h`, `90m`, `1h 30m` o `-45m`.
 - Las evidencias pendientes avisan a GM/Officer después del tiempo configurado.
 - La configuración de mapas puede aplicarse de inmediato o programarse para el cierre de las 10 UTC.
 - El cierre diario archiva el resumen, cierra sesiones, limpia el período y activa los mapas programados.

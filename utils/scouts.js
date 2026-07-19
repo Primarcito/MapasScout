@@ -56,6 +56,8 @@ function cerrarScoutsActivosFiltrados(userId, predicate, username = null, motivo
     const inicioBase = creditFrom ? Math.max(entry.inicio, creditFrom) : entry.inicio;
     const inicio = Math.min(fin, inicioBase + creditPenaltyMs);
     const duracionMin = Math.max(0, Math.floor((fin - inicio) / 60000));
+    const verificationId = options.verificationId || entry.provisionalVerificationId;
+    const provisional = options.provisional ?? entry.provisional;
     const registro = {
       userId,
       username: username || entry.username || userId,
@@ -66,8 +68,8 @@ function cerrarScoutsActivosFiltrados(userId, predicate, username = null, motivo
       fin,
       duracionMin,
       motivo,
-      ...(options.verificationId ? { verificationId: options.verificationId } : {}),
-      ...(options.provisional ? { provisional: true } : {}),
+      ...(verificationId ? { verificationId } : {}),
+      ...(provisional ? { provisional: true } : {}),
     };
     state.historialScouts.push(registro);
     // Solo agregar al historialDia si no fue por reset

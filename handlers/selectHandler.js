@@ -85,11 +85,11 @@ module.exports = async function handleSelect(interaction) {
       return interaction.reply({ content: 'Esta acción requiere rol GM u Officer.', flags: MessageFlags.Ephemeral });
     }
     const userId = interaction.values[0];
-    const hours = new TextInputBuilder()
+    const time = new TextInputBuilder()
       .setCustomId('hours_value')
-      .setLabel('Horas: positivo suma, negativo resta')
+      .setLabel('Tiempo: positivo suma, negativo resta')
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Ejemplo: 3 o -1.5')
+      .setPlaceholder('Ejemplo: 1.5h, 90m o -1h 30m')
       .setRequired(true);
     const reason = new TextInputBuilder()
       .setCustomId('hours_reason')
@@ -99,8 +99,8 @@ module.exports = async function handleSelect(interaction) {
       .setRequired(true);
     return interaction.showModal(new ModalBuilder()
       .setCustomId(`modal_admin_assign_hours_${userId}`)
-      .setTitle('Asignar o restar horas')
-      .addComponents(new ActionRowBuilder().addComponents(hours), new ActionRowBuilder().addComponents(reason)));
+      .setTitle('Asignar o restar tiempo')
+      .addComponents(new ActionRowBuilder().addComponents(time), new ActionRowBuilder().addComponents(reason)));
   }
 
   /* ===== LIMPIAR SCOUT ===== */

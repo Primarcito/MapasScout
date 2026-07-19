@@ -52,11 +52,11 @@ function generarEmbedHistorial(now = Date.now()) {
 function generarEmbedsHistorial(summaryNow = Date.now()) {
   const mapCredits = projectDailyMapCredits(summaryNow);
   // Combinar historialDia con sesiones activas
-  const todasSesiones = [...state.historialDia];
+  const todasSesiones = state.historialDia.filter(entry => !entry.provisional);
 
   for (const userId in state.scoutsActivos) {
     const entradas = state.scoutsActivos[userId];
-    entradas.forEach(entry => {
+    entradas.filter(entry => !entry.provisional).forEach(entry => {
       todasSesiones.push({
         userId,
         username: entry.username || userId,

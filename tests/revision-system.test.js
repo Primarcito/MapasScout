@@ -15,7 +15,14 @@ const {
   beginRevisionRound,
   discardResidualRevisionState,
 } = require('../utils/revisionRounds');
-const { calculatePhotoPenaltyMs, rollbackProvisionalCredit } = require('../utils/verification');
+const {
+  calculatePhotoPenaltyMs,
+  retainedCreditMinutes,
+  rollbackProvisionalCredit,
+  acceptScreenshotProvisionally,
+  approveProvisionalVerification,
+  expireVerificationAtDeadline,
+} = require('../utils/verification');
 const {
   crearPanelRevisionMovil,
   actualizarRevision,
@@ -26,6 +33,8 @@ const { repairSummaryDescription, regenerateSummaryMessage } = require('../utils
 const { generarEmbedsHistorial } = require('../commands/scout');
 const { cerrarScoutsActivos, descartarScoutsActivos, asignarTiempoManual } = require('../utils/scouts');
 const { guardarScouts, cargarScouts } = require('../data/persistence');
+const { resetDailyRevisionState } = require('../utils/reset');
+const { parseTimeAdjustmentToMinutes } = require('../utils/timeInput');
 
 test.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
 
@@ -253,13 +262,182 @@ test('regenerar resumen publica el reemplazo antes de borrar el mensaje anterior
   );
 });
 
-test('la demora de foto escala linealmente de cero a tres horas', () => {
+test('la demora de foto usa una escala progresiva y descuenta 30 minutos al minuto cuatro', () => {
   const createdAt = 1_000_000;
   const pending = { createdAt };
   const cfg = { graceMinutes: 10 };
   assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 60_000, cfg), 0);
-  assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 5 * 60_000, cfg), 80 * 60_000);
+  assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 2 * 60_000, cfg), 10 * 60_000);
+  assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 3 * 60_000, cfg), 20 * 60_000);
+  assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 4 * 60_000, cfg), 30 * 60_000);
+  assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 5 * 60_000, cfg), 45 * 60_000);
+  assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 6 * 60_000, cfg), 60 * 60_000);
+  assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 8 * 60_000, cfg), 120 * 60_000);
   assert.equal(calculatePhotoPenaltyMs(pending, createdAt + 10 * 60_000, cfg), 180 * 60_000);
+});
+
+test('una sola ventana de diez minutos limita la bonificación por reacción rápida', () => {
+  const createdAt = 1_000_000;
+  const cfg = { graceMinutes: 10 };
+  const respuestaRapida = {
+    createdAt,
+    screenshotRequestedAt: createdAt,
+  };
+  const fotoRapida = {
+    createdAt,
+    screenshotRequestedAt: createdAt + 4 * 60_000,
+  };
+
+  assert.equal(
+    calculatePhotoPenaltyMs(respuestaRapida, createdAt + 4 * 60_000, cfg),
+    8 * 60_000
+  );
+  assert.equal(
+    calculatePhotoPenaltyMs(fotoRapida, createdAt + 4 * 60_000, cfg),
+    8 * 60_000
+  );
+
+  const ambasConDemora = {
+    createdAt,
+    screenshotRequestedAt: createdAt + 2 * 60_000,
+  };
+  assert.equal(
+    calculatePhotoPenaltyMs(ambasConDemora, createdAt + 4 * 60_000, cfg),
+    15 * 60_000
+  );
+});
+
+test('una foto válida acredita hasta su recepción y aplica un solo descuento visible', async () => {
+  const inicio = 1_000_000;
+  const recibido = inicio + 244 * 60_000;
+  const pending = {
+    screenshotReceivedAt: recibido,
+    creditPenaltyMs: 8 * 60_000,
+    provisionalVerificationId: 'evidencia-1',
+  };
+  state.historialScouts = [];
+  state.historialDia = [];
+  state.coberturaDia = {};
+  state.mapas = { Lymhurst: ['Mapa Uno'] };
+  state.registros = { Lymhurst: { 'Mapa Uno': ['1'] } };
+  state.scoutsActivos = {
+    1: [{ ciudad: 'Lymhurst', mapa: 'Mapa Uno', inicio, username: 'Scout' }],
+  };
+  state.panelMessage = null;
+  state.panelChannelId = null;
+
+  await acceptScreenshotProvisionally(
+    '1',
+    'Scout',
+    state.scoutsActivos['1'],
+    pending
+  );
+
+  assert.equal(state.historialDia[0].duracionMin, 236);
+  assert.equal(state.historialDia[0].fin, recibido);
+  assert.equal(state.scoutsActivos['1'][0].inicio, recibido);
+  assert.equal(state.scoutsActivos['1'][0].provisional, true);
+});
+
+test('el vencimiento respeta una foto recibida antes del límite aunque siga procesándose', async () => {
+  const expiresAt = Date.now() - 1000;
+  state.verificacionesScout = {
+    1: {
+      status: 'processing_screenshot',
+      screenshotReceivedAt: expiresAt - 1000,
+      expiresAt,
+    },
+  };
+  const expired = await expireVerificationAtDeadline('1', Date.now());
+  assert.equal(expired, false);
+  assert.equal(state.verificacionesScout['1'].status, 'processing_screenshot');
+});
+
+test('una verificación manual temprana informa el crédito realmente disponible', () => {
+  const start = 1_000_000;
+  const creditUntil = start + 120 * 60_000;
+  const retained = retainedCreditMinutes(
+    { cycleStart: start },
+    creditUntil,
+    180 * 60_000
+  );
+  assert.equal(retained, 0);
+});
+
+test('el crédito provisional no entra al resumen ni a mapas antes de aprobarse', () => {
+  const now = Date.now();
+  state.historialDia = [{
+    userId: '1',
+    username: 'Scout',
+    ciudad: 'Lymhurst',
+    mapa: 'Mapa Uno',
+    inicio: now - 240 * 60_000,
+    fin: now,
+    provisional: true,
+    verificationId: 'evidencia-1',
+  }];
+  state.scoutsActivos = {};
+  state.mapas = { Lymhurst: ['Mapa Uno'] };
+  state.registros = { Lymhurst: { 'Mapa Uno': ['1'] } };
+  state.coberturaDia = {};
+  state.mapMinuteBalances = {};
+  state.revisionScores = {};
+
+  const description = generarEmbedsHistorial(now)[0].data.description;
+  assert.match(description, /No hay actividad registrada hoy/);
+  assert.doesNotMatch(description, /Scout/);
+});
+
+test('aprobar después del reset difiere el crédito sin perderlo', async () => {
+  const record = {
+    userId: '1',
+    username: 'Scout',
+    ciudad: 'Lymhurst',
+    mapa: 'Mapa Uno',
+    inicio: 1_000_000,
+    fin: 2_000_000,
+    duracionMin: 16,
+    provisional: true,
+    verificationId: 'evidencia-1',
+  };
+  state.historialScouts = [record];
+  state.historialDia = [];
+  state.scoutsActivos = {};
+  state.verificacionesScout = {
+    1: { provisionalVerificationId: 'evidencia-1' },
+  };
+
+  await approveProvisionalVerification('1', state.verificacionesScout['1']);
+  assert.equal(state.historialScouts[0].provisional, false);
+  assert.equal(state.historialDia.length, 1);
+  assert.equal(state.historialDia[0].motivo, 'verificacion_confirmada_diferida');
+  assert.equal(state.verificacionesScout['1'], undefined);
+});
+
+test('el cierre diario reinicia multiplicadores después de archivar el período', () => {
+  state.revisionScores = {
+    1: { misses: 2, multiplier: 0.90, manualMultiplier: 0.85 },
+  };
+  state.revisionRound = { id: 'ronda' };
+  state.revisionEstado = { mapa: { revisores: ['1'] } };
+  state.revisionRoundHistory = [{ id: 'anterior' }];
+
+  resetDailyRevisionState();
+  assert.deepEqual(state.revisionScores, {});
+  assert.equal(state.revisionRound, null);
+  assert.deepEqual(state.revisionEstado, {});
+  assert.deepEqual(state.revisionRoundHistory, []);
+});
+
+test('el ajuste administrativo acepta horas, minutos y valores negativos', () => {
+  assert.equal(parseTimeAdjustmentToMinutes('1.5'), 90);
+  assert.equal(parseTimeAdjustmentToMinutes('1,5h'), 90);
+  assert.equal(parseTimeAdjustmentToMinutes('90m'), 90);
+  assert.equal(parseTimeAdjustmentToMinutes('1h 30m'), 90);
+  assert.equal(parseTimeAdjustmentToMinutes('1:30'), 90);
+  assert.equal(parseTimeAdjustmentToMinutes('-45m'), -45);
+  assert.equal(parseTimeAdjustmentToMinutes('-1h 30m'), -90);
+  assert.equal(parseTimeAdjustmentToMinutes('texto'), null);
 });
 
 test('la penalización máxima conserva una hora y el fraude descarta el bloque', () => {

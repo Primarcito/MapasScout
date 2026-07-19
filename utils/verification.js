@@ -11,17 +11,48 @@ const { canScout, canDecideVerification } = require('../permissions');
 const { isCreatorUser, sendCreatorDm } = require('./creatorMessages');
 
 let intervalId = null;
+const expirationTimers = new Map();
 const PHOTO_FREE_MINUTES = 1;
 const MAX_DELAY_PENALTY_MINUTES = 180;
 
+function calculateDelayPenaltyMinutes(startedAt, completedAt, graceMinutes, freeMinutes = PHOTO_FREE_MINUTES) {
+  const freeUntil = startedAt + freeMinutes * 60000;
+  if (completedAt <= freeUntil) return 0;
+  const deadline = startedAt + graceMinutes * 60000;
+  const penalizedWindow = Math.max(1, deadline - freeUntil);
+  const ratio = Math.min(1, Math.max(0, (completedAt - freeUntil) / penalizedWindow));
+
+  // Curva progresiva para una ventana normal de 10 minutos:
+  // 1m: 0, 2m: -10m, 3m: -20m, 4m: -30m, 6m: -60m y 10m: -180m.
+  let penaltyMinutes;
+  if (ratio <= 1 / 3) {
+    penaltyMinutes = ratio * 90;
+  } else if (ratio <= 5 / 9) {
+    penaltyMinutes = 30 + ((ratio - 1 / 3) / (2 / 9)) * 30;
+  } else {
+    penaltyMinutes = 60 + ((ratio - 5 / 9) / (4 / 9)) * 120;
+  }
+  return penaltyMinutes;
+}
+
 function calculatePhotoPenaltyMs(pending, submittedAt = Date.now(), cfg = getVerificationConfig()) {
   const createdAt = Number(pending?.createdAt) || submittedAt;
-  const freeUntil = createdAt + PHOTO_FREE_MINUTES * 60000;
-  if (submittedAt <= freeUntil) return 0;
-  const deadline = createdAt + cfg.graceMinutes * 60000;
-  const penalizedWindow = Math.max(1, deadline - freeUntil);
-  const ratio = Math.min(1, Math.max(0, (submittedAt - freeUntil) / penalizedWindow));
-  return Math.round(ratio * MAX_DELAY_PENALTY_MINUTES * 60000);
+  const responseAt = Number(pending?.screenshotRequestedAt);
+  const totalPenalty = calculateDelayPenaltyMinutes(createdAt, submittedAt, cfg.graceMinutes);
+
+  // Compatibilidad con verificaciones antiguas que no guardaban el momento del clic.
+  if (!Number.isFinite(responseAt) || responseAt < createdAt || responseAt > submittedAt) {
+    return Math.round(totalPenalty) * 60000;
+  }
+
+  const responsePenalty = calculateDelayPenaltyMinutes(createdAt, responseAt, cfg.graceMinutes);
+  const photoPenalty = calculateDelayPenaltyMinutes(responseAt, submittedAt, cfg.graceMinutes);
+  const fastestSignalPenalty = Math.min(responsePenalty, photoPenalty);
+
+  // El tiempo total siempre representa al menos 25% del descuento. La señal
+  // más rápida (clic o foto) puede reducirlo, pero nunca borrarlo por completo.
+  const finalPenalty = totalPenalty * 0.25 + fastestSignalPenalty * 0.75;
+  return Math.round(finalPenalty) * 60000;
 }
 
 function numberOrDefault(value, fallback, min = 1) {
@@ -62,9 +93,29 @@ function formatMinutes(totalMin) {
   return `${horas}h ${mins}m`;
 }
 
-function noPhotoExpirationContent(userId) {
-  const retained = Math.max(0, getVerificationConfig().maxActiveMinutes - MAX_DELAY_PENALTY_MINUTES);
-  return `<@${userId}> no enviaste la captura a tiempo: fuiste retirado de mapas y conservarás **${formatMinutes(retained)}** de este bloque.`;
+function formatElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+function retainedCreditMinutes(pending, creditUntil, penaltyMs) {
+  const cycleStart = Number(pending?.cycleStart) || Number(creditUntil);
+  const available = Math.max(0, Math.floor((Number(creditUntil) - cycleStart) / 60000));
+  return Math.max(0, available - Math.round((Number(penaltyMs) || 0) / 60000));
+}
+
+function noPhotoExpirationContent(userId, pending) {
+  const retained = retainedCreditMinutes(
+    pending,
+    getCreditUntilOnClose(pending),
+    MAX_DELAY_PENALTY_MINUTES * 60000
+  );
+  const reason = normalizeVerificationMode(pending?.mode || getVerificationMode()) === 'foto'
+    ? 'no enviaste la captura a tiempo'
+    : 'no confirmaste a tiempo';
+  return `<@${userId}> ${reason}: fuiste retirado de mapas y conservarás **${formatMinutes(retained)}** de este bloque.`;
 }
 
 function getActiveEntries(userId) {
@@ -77,6 +128,21 @@ function getOldestStart(entries) {
 
 function getCreditUntilOnClose(pending) {
   return pending?.creditUntilOnClose || pending?.creditFromOnExpire || Date.now();
+}
+
+function scheduleVerificationExpiration(userId, expiresAt) {
+  const id = String(userId);
+  const previous = expirationTimers.get(id);
+  if (previous) clearTimeout(previous);
+
+  const delay = Math.max(0, Number(expiresAt) - Date.now());
+  const timer = setTimeout(() => {
+    expirationTimers.delete(id);
+    expireVerificationAtDeadline(id).catch(err => {
+      console.error(`Error anulando la verificacion vencida de ${id}:`, err);
+    });
+  }, delay);
+  expirationTimers.set(id, timer);
 }
 
 function getRegisteredMaps(userId) {
@@ -300,10 +366,13 @@ async function requestVerification(userId, entries, now, cfg, options = {}) {
       ? 'Pulsa **Sigo activo** y luego envía una captura del scout con la hora visible. ' +
         'Tienes 1 minuto sin penalización; después el crédito baja progresivamente hasta conservar solo 1 hora al vencer.'
       : 'Pulsa **Sigo activo** para confirmar o **Salir de mapas** para retirarte.';
+    const deadlineText = cfg.mode === 'foto'
+      ? `Tienes **${cfg.graceMinutes}m en total** para pulsar y enviar la captura.`
+      : `Tienes **${cfg.graceMinutes}m** para responder.`;
     const msg = await channel.send({
       content:
         `<@${userId}> verificacion de scout: llevas **${formatMinutes(activeMinutes)}** activo en ${mapsSummary(entries)}.\n` +
-        `${modeText}\nTienes **${cfg.graceMinutes}m** para responder.`,
+        `${modeText}\n${deadlineText}`,
       components: verificationButtons(userId),
       allowedMentions: { users: [userId] }
     });
@@ -321,6 +390,7 @@ async function requestVerification(userId, entries, now, cfg, options = {}) {
       expiresAt,
     };
     guardarScouts();
+    scheduleVerificationExpiration(userId, expiresAt);
 
     await sendCreatorVerificationRequest(userId, entries, activeMinutes, cfg, options);
 
@@ -386,6 +456,33 @@ async function closeScoutByVerification(userId, motivo, finOverride, options = {
   }
 }
 
+async function expireVerificationAtDeadline(userId, now = Date.now()) {
+  const pending = state.verificacionesScout[userId];
+  if (!pending || pending.status === 'waiting_review') return false;
+  if (
+    pending.status === 'processing_screenshot'
+    && Number(pending.screenshotReceivedAt) <= Number(pending.expiresAt)
+  ) {
+    return false;
+  }
+  if (Number(pending.expiresAt) > now) {
+    scheduleVerificationExpiration(userId, pending.expiresAt);
+    return false;
+  }
+
+  const entries = getActiveEntries(userId);
+  if (entries.length === 0) {
+    await cancelScoutVerification(userId, 'Verificacion cancelada: ya no tienes mapas activos.');
+    return true;
+  }
+
+  pending.creditPenaltyMs = MAX_DELAY_PENALTY_MINUTES * 60000;
+  await closeScoutByVerification(userId, 'verificacion_expirada', getCreditUntilOnClose(pending), {
+    content: noPhotoExpirationContent(userId, pending)
+  });
+  return true;
+}
+
 async function reviewActiveScouts() {
   const cfg = getVerificationConfig();
   if (!cfg.enabled) return;
@@ -427,12 +524,10 @@ async function reviewActiveScouts() {
       }
       continue;
     }
+    if (pending.status === 'processing_screenshot') continue;
 
     if (pending.expiresAt <= now) {
-      pending.creditPenaltyMs = MAX_DELAY_PENALTY_MINUTES * 60000;
-      await closeScoutByVerification(userId, 'verificacion_expirada', getCreditUntilOnClose(pending), {
-        content: noPhotoExpirationContent(userId)
-      });
+      await expireVerificationAtDeadline(userId, now);
     }
   }
 
@@ -459,6 +554,22 @@ function startScoutVerification() {
   }
 
   if (intervalId) clearInterval(intervalId);
+  let recoveredInterruptedUpload = false;
+  for (const [userId, pending] of Object.entries(state.verificacionesScout)) {
+    if (pending?.status === 'processing_screenshot') {
+      delete state.verificacionesScout[userId];
+      recoveredInterruptedUpload = true;
+      editVerificationMessage(
+        pending,
+        'La carga de tu captura fue interrumpida por un reinicio del bot. No se aplicó penalización; recibirás una verificación nueva.'
+      ).catch(() => {});
+      continue;
+    }
+    if (pending?.status !== 'waiting_review' && pending?.expiresAt) {
+      scheduleVerificationExpiration(userId, pending.expiresAt);
+    }
+  }
+  if (recoveredInterruptedUpload) guardarScouts();
 
   setTimeout(() => {
     reviewActiveScouts().catch(err => console.error('Error revisando scouts activos:', err));
@@ -498,7 +609,7 @@ async function confirmScoutVerification(interaction, userId) {
   if (pending.expiresAt <= now) {
     pending.creditPenaltyMs = MAX_DELAY_PENALTY_MINUTES * 60000;
     await interaction.message.edit({
-      content: noPhotoExpirationContent(userId),
+      content: noPhotoExpirationContent(userId, pending),
       components: []
     });
     await closeScoutByVerification(userId, 'verificacion_expirada', getCreditUntilOnClose(pending), {
@@ -560,10 +671,11 @@ async function completeScoutVerification(userId, username, entries, options = {}
 function rollbackProvisionalCredit(verificationId) {
   if (!verificationId) return [];
   const removed = state.historialScouts.filter(entry => entry.verificationId === verificationId);
+  const removedToday = state.historialDia.filter(entry => entry.verificationId === verificationId);
   state.historialScouts = state.historialScouts.filter(entry => entry.verificationId !== verificationId);
   state.historialDia = state.historialDia.filter(entry => entry.verificationId !== verificationId);
 
-  for (const entry of removed) {
+  for (const entry of removedToday) {
     const key = `${entry.ciudad}__${entry.mapa}`;
     if (state.coberturaDia[key]) {
       state.coberturaDia[key].minutos = Math.max(0, (state.coberturaDia[key].minutos || 0) - (entry.duracionMin || 0));
@@ -575,9 +687,15 @@ function rollbackProvisionalCredit(verificationId) {
 async function acceptScreenshotProvisionally(userId, username, entries, pending) {
   const now = pending.screenshotReceivedAt || Date.now();
   const verificationId = pending.provisionalVerificationId;
-  const nextEntries = entries.map(entry => ({ ...entry, inicio: now, username }));
+  const nextEntries = entries.map(entry => ({
+    ...entry,
+    inicio: now,
+    username,
+    provisional: true,
+    provisionalVerificationId: verificationId,
+  }));
 
-  cerrarScoutsActivos(userId, username, 'verificacion_provisional', getCreditUntilOnClose(pending), {
+  cerrarScoutsActivos(userId, username, 'verificacion_provisional', now, {
     creditPenaltyMs: pending.creditPenaltyMs || 0,
     verificationId,
     provisional: true,
@@ -590,14 +708,30 @@ async function acceptScreenshotProvisionally(userId, username, entries, pending)
 
 async function approveProvisionalVerification(userId, pending) {
   const verificationId = pending.provisionalVerificationId;
-  for (const collection of [state.historialScouts, state.historialDia]) {
-    for (const entry of collection) {
-      if (entry.verificationId === verificationId) {
-        entry.provisional = false;
-        entry.motivo = 'verificacion_confirmada';
-      }
+  const approvedRecords = state.historialScouts.filter(entry => entry.verificationId === verificationId);
+  const currentRecords = state.historialDia.filter(entry => entry.verificationId === verificationId);
+
+  for (const entry of [...approvedRecords, ...currentRecords]) {
+    entry.provisional = false;
+    entry.motivo = 'verificacion_confirmada';
+  }
+  for (const entry of state.scoutsActivos[userId] || []) {
+    if (entry.provisionalVerificationId === verificationId) {
+      delete entry.provisional;
+      delete entry.provisionalVerificationId;
     }
   }
+
+  // Si la revisión terminó después del cierre diario, acreditar los registros
+  // aprobados en el período actual para que no se pierdan definitivamente.
+  if (currentRecords.length === 0) {
+    state.historialDia.push(...approvedRecords.map(entry => ({
+      ...entry,
+      provisional: false,
+      motivo: 'verificacion_confirmada_diferida',
+    })));
+  }
+
   delete state.verificacionesScout[userId];
   guardarScouts();
 }
@@ -621,9 +755,9 @@ async function handleVerificationScreenshotMessage(message) {
   if (pending.expiresAt <= now) {
     pending.creditPenaltyMs = MAX_DELAY_PENALTY_MINUTES * 60000;
     await closeScoutByVerification(userId, 'verificacion_expirada', getCreditUntilOnClose(pending), {
-      content: noPhotoExpirationContent(userId)
+      content: noPhotoExpirationContent(userId, pending)
     });
-    await message.reply(noPhotoExpirationContent(userId));
+    await message.reply(noPhotoExpirationContent(userId, pending));
     return true;
   }
 
@@ -633,16 +767,49 @@ async function handleVerificationScreenshotMessage(message) {
     return true;
   }
 
+  pending.status = 'processing_screenshot';
+  pending.screenshotReceivedAt = now;
+  guardarScouts();
+
+  const restoreScreenshotWait = async () => {
+    if (state.verificacionesScout[userId] !== pending) return;
+    pending.status = 'waiting_screenshot';
+    delete pending.screenshotReceivedAt;
+    guardarScouts();
+    if (pending.expiresAt <= Date.now()) {
+      await expireVerificationAtDeadline(userId);
+    } else {
+      scheduleVerificationExpiration(userId, pending.expiresAt);
+    }
+  };
+
   let evidenceMessage = null;
   try {
     evidenceMessage = await sendVerificationEvidence(userId, entries, attachments, message);
   } catch (err) {
     console.error('Error enviando captura de verificacion:', err);
+    await restoreScreenshotWait();
     await message.reply('Recibi la captura, pero no pude archivarla en el canal de verificaciones. Avisa a un GM.');
     return true;
   }
   if (!evidenceMessage) {
+    await restoreScreenshotWait();
     await message.reply('Recibi la captura, pero no encontre el canal de verificaciones. Avisa a un GM.');
+    return true;
+  }
+  if (state.verificacionesScout[userId] !== pending) {
+    await evidenceMessage.edit({
+      content: buildEvidenceReviewContent(
+        userId,
+        entries,
+        { approve: [], reject: [] },
+        getVerificationConfig(),
+        'Anulada porque el scout dejó de estar activo durante el envío',
+        message.author.username
+      ),
+      components: evidenceReviewButtons(userId, true),
+    }).catch(() => {});
+    await message.reply('La verificación se anuló porque ya no estabas activo cuando terminó de procesarse.');
     return true;
   }
 
@@ -653,13 +820,14 @@ async function handleVerificationScreenshotMessage(message) {
   pending.evidenceUrl = evidenceMessage.url;
   pending.username = message.author.username;
   pending.provisionalVerificationId = evidenceMessage.id;
-  pending.screenshotReceivedAt = now;
   pending.reviewExpiresAt = null;
   pending.creditPenaltyMs = calculatePhotoPenaltyMs(pending, now);
-  const retainedMinutes = Math.max(
-    0,
-    getVerificationConfig().maxActiveMinutes - Math.round(pending.creditPenaltyMs / 60000)
-  );
+  const createdAt = Number(pending.createdAt) || now;
+  const responseAt = Number(pending.screenshotRequestedAt) || createdAt;
+  const responseDelay = formatElapsed(responseAt - createdAt);
+  const photoDelay = formatElapsed(now - responseAt);
+  const penaltyMinutes = Math.round(pending.creditPenaltyMs / 60000);
+  const retainedMinutes = retainedCreditMinutes(pending, now, pending.creditPenaltyMs);
   await acceptScreenshotProvisionally(userId, message.author.username, entries, pending);
   try {
     await evidenceMessage.edit({
@@ -668,7 +836,7 @@ async function handleVerificationScreenshotMessage(message) {
         entries,
         pending.reviewVotes,
         getVerificationConfig(),
-        `Aceptada temporalmente · crédito ${formatMinutes(retainedMinutes)}`,
+        `Aceptada temporalmente · respuesta ${responseDelay} · foto ${photoDelay} · descuento ${formatMinutes(penaltyMinutes)} · crédito ${formatMinutes(retainedMinutes)}`,
         message.author.username
       ),
       components: evidenceReviewButtons(userId),
@@ -681,7 +849,8 @@ async function handleVerificationScreenshotMessage(message) {
   await editVerificationMessage(
     pending,
     `<@${userId}> captura aceptada temporalmente. Sigues activo mientras se revisa. ` +
-    `Crédito provisional del bloque: **${formatMinutes(retainedMinutes)}**. Si la captura es rechazada, perderás el bloque completo.`
+    `Respuesta: **${responseDelay}** · foto: **${photoDelay}** · descuento: **${formatMinutes(penaltyMinutes)}** · ` +
+    `crédito provisional: **${formatMinutes(retainedMinutes)}**. Si la captura es rechazada, perderás el bloque completo.`
   );
   await sendScoutLog('VERIFICACION_CAPTURA', [
     `Scout: ${formatUser(userId, message.author.username)}`,
@@ -964,5 +1133,9 @@ module.exports = {
   getVerificationMode,
   normalizeVerificationMode,
   calculatePhotoPenaltyMs,
+  retainedCreditMinutes,
   rollbackProvisionalCredit,
+  acceptScreenshotProvisionally,
+  approveProvisionalVerification,
+  expireVerificationAtDeadline,
 };

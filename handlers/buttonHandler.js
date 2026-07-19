@@ -154,7 +154,7 @@ module.exports = async function handleButton(interaction) {
     }
     if (interaction.customId === 'admin_assign_hours') {
       return interaction.update({
-        embeds: [new EmbedBuilder().setTitle('Asignar o restar horas').setDescription('Selecciona un scout y luego indica el ajuste.').setColor(0x5865f2)],
+        embeds: [new EmbedBuilder().setTitle('Asignar o restar tiempo').setDescription('Selecciona un scout y luego indica horas o minutos.').setColor(0x5865f2)],
         components: [userPicker('select_admin_assign_hours', 'Selecciona un scout'), backRow()],
       });
     }

@@ -6,7 +6,7 @@ const MINUTES_PER_VALID_MAP = 60;
 function collectDailyMapSessions(now = Date.now()) {
   const byUser = {};
   const add = (userId, entry, fin = entry.fin) => {
-    if (!entry || entry.manualTimeAdjustment || !entry.ciudad || !entry.mapa || !entry.inicio) return;
+    if (!entry || entry.manualTimeAdjustment || entry.provisional || !entry.ciudad || !entry.mapa || !entry.inicio) return;
     const id = String(userId || entry.userId);
     if (!id) return;
     const key = `${entry.ciudad}__${entry.mapa}`;
