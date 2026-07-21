@@ -24,6 +24,7 @@ function guardarDatos() {
       mapas: state.mapas,
       registros: state.registros,
       ultimaEdicion: state.ultimaEdicion,
+      lastDailyResetAt: state.lastDailyResetAt,
       verificationMode: state.verificationMode,
       mapasEnAlerta: state.mapasEnAlerta,
       scheduledMaps: state.scheduledMaps,
@@ -38,6 +39,7 @@ function cargarDatos() {
     state.mapas = normalizarMapasPorCiudad(data.mapas || state.mapas);
     state.registros = normalizarRegistros(data.registros || {});
     state.ultimaEdicion = data.ultimaEdicion || null;
+    state.lastDailyResetAt = Number(data.lastDailyResetAt) || null;
     state.verificationMode = data.verificationMode || state.verificationMode;
     state.mapasEnAlerta = normalizarAlertasMapas(data.mapasEnAlerta || {});
     state.scheduledMaps = data.scheduledMaps?.maps
@@ -78,8 +80,29 @@ function cargarScouts() {
     state.verificacionesScout = data.verificaciones || {};
     state.logAdmin = data.logAdmin || [];
     state.coberturaDia = data.coberturaDia || {};
-    state.mapMinuteBalances = data.mapMinuteBalances || {};
+    state.mapMinuteBalances = normalizarSaldosDeMapas(data.mapMinuteBalances || {});
   }
+}
+
+function normalizarSaldosDeMapas(saldos) {
+  const resultado = {};
+  for (const [userId, porMapa] of Object.entries(saldos || {})) {
+    for (const [key, rawMinutes] of Object.entries(porMapa || {})) {
+      const separator = String(key).indexOf('__');
+      if (separator < 1) continue;
+      const ciudad = String(key).slice(0, separator).trim();
+      const mapa = normalizarNombreMapa(String(key).slice(separator + 2));
+      const minutos = Math.max(0, Number(rawMinutes) || 0);
+      if (!ciudad || !mapa || minutos <= 0) continue;
+      if (!resultado[userId]) resultado[userId] = {};
+      const normalizedKey = `${ciudad}__${mapa}`;
+      // Dos claves distintas que se normalizan al mismo mapa son residuos de
+      // formato, no dos saldos independientes. Conservamos el mayor para no
+      // acreditar minutos dos veces al cargar datos antiguos.
+      resultado[userId][normalizedKey] = Math.max(resultado[userId][normalizedKey] || 0, minutos);
+    }
+  }
+  return resultado;
 }
 
 function guardarPanel() {

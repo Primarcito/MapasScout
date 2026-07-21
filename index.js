@@ -6,7 +6,7 @@ const { registerCommands, getCommandsMap } = require('./commands/register');
 const handleButton = require('./handlers/buttonHandler');
 const handleSelect = require('./handlers/selectHandler');
 const handleModal = require('./handlers/modalHandler');
-const { programarReset } = require('./utils/reset');
+const { programarReset, recoverMissedDailyReset } = require('./utils/reset');
 const {
   actualizarPanel,
   actualizarRevision,
@@ -169,6 +169,8 @@ client.once("clientReady", async () => {
     }
   }
 
+  const recoveredReset = await recoverMissedDailyReset();
+  if (recoveredReset) console.log('Se recuperó un cierre diario que Railway no alcanzó a ejecutar.');
   programarReset();
   startScoutVerification();
   const discardedRevision = startRevisionRounds();

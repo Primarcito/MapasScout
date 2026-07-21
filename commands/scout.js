@@ -50,7 +50,9 @@ function generarEmbedHistorial(now = Date.now()) {
 }
 
 function generarEmbedsHistorial(summaryNow = Date.now()) {
-  const mapCredits = projectDailyMapCredits(summaryNow);
+  // Los saldos pendientes se conservan internamente, pero no convierten
+  // minutos de otro período en mapas extra dentro del resumen de hoy.
+  const mapCredits = projectDailyMapCredits(summaryNow, { includeBalances: false });
   // Combinar historialDia con sesiones activas
   const todasSesiones = state.historialDia.filter(entry => !entry.provisional);
 

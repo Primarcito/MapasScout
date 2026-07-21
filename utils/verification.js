@@ -487,10 +487,10 @@ async function reviewActiveScouts() {
   const cfg = getVerificationConfig();
   if (!cfg.enabled) return;
 
-  const staleEntries = reconcileRegisteredActiveScouts();
+  const staleEntries = reconcileRegisteredActiveScouts({ preserveCredit: true });
   if (staleEntries.length) {
     guardarScouts();
-    console.log(`Se descartaron ${staleEntries.length} sesiones residuales que no aparecían en el panel.`);
+    console.log(`Se recuperaron y cerraron ${staleEntries.length} sesiones residuales que no aparecían en el panel.`);
   }
 
   const now = Date.now();

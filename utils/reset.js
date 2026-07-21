@@ -32,6 +32,38 @@ function programarReset() {
   }, msHastaReset);
 }
 
+function currentPeriodStart(now = Date.now()) {
+  const date = new Date(now);
+  const start = new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    10, 0, 0, 0
+  ));
+  if (start.getTime() > now) start.setUTCDate(start.getUTCDate() - 1);
+  return start.getTime();
+}
+
+async function recoverMissedDailyReset(now = Date.now()) {
+  const periodStart = currentPeriodStart(now);
+  if (Number(state.lastDailyResetAt) >= periodStart) return false;
+
+  // Migración segura para instalaciones antiguas: si todo lo presente ya
+  // pertenece al período actual, solo guardamos la marca sin borrar nada.
+  const timestamps = [
+    ...(state.historialDia || []).filter(entry => !entry.manualTimeAdjustment).map(entry => Number(entry.inicio)),
+    ...Object.values(state.scoutsActivos || {}).flat().map(entry => Number(entry.inicio)),
+  ].filter(Number.isFinite);
+  if (!state.lastDailyResetAt && timestamps.every(timestamp => timestamp >= periodStart)) {
+    state.lastDailyResetAt = periodStart;
+    guardarDatos();
+    return false;
+  }
+
+  await ejecutarReset({ resetAt: now, recovered: true });
+  return true;
+}
+
 function resetDailyRevisionState() {
   state.revisionEstado = {};
   state.revisionRound = null;
@@ -39,9 +71,9 @@ function resetDailyRevisionState() {
   state.revisionScores = {};
 }
 
-async function ejecutarReset() {
+async function ejecutarReset(options = {}) {
   console.log("Ejecutando reset diario...");
-  const resetAt = Date.now();
+  const resetAt = options.resetAt || Date.now();
 
   // Auto-postear historial antes de borrar
   try {
@@ -84,6 +116,7 @@ async function ejecutarReset() {
   state.ultimosMapas = {};
   state.mapasEnAlerta = {};
   state.ultimaEdicion = null;
+  state.lastDailyResetAt = resetAt;
   state.historialDia = [];
   state.coberturaDia = {};
   resetDailyRevisionState();
@@ -91,7 +124,7 @@ async function ejecutarReset() {
   guardarDatos();
   guardarScouts();
   guardarRevisionPanel();
-  addAuditEntry({ action: 'completo el cierre diario y activo el siguiente periodo' });
+  addAuditEntry({ action: options.recovered ? 'recupero un cierre diario pendiente y activo el siguiente periodo' : 'completo el cierre diario y activo el siguiente periodo' });
   await actualizarPanel();
   await actualizarRevision();
   await sincronizarMensajeAlertas();
@@ -109,4 +142,4 @@ async function ejecutarReset() {
   console.log("Reset diario completado.");
 }
 
-module.exports = { programarReset, ejecutarReset, resetDailyRevisionState };
+module.exports = { programarReset, ejecutarReset, resetDailyRevisionState, currentPeriodStart, recoverMissedDailyReset };

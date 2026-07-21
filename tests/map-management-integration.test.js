@@ -75,3 +75,20 @@ test('una sesión que no aparece registrada en el panel no recibe verificación'
   assert.equal(removed.length, 1);
   assert.equal(state.scoutsActivos.hiddenUser, undefined);
 });
+
+test('una sesión residual puede cerrarse sin perder el tiempo ya transcurrido', () => {
+  const now = Date.now();
+  state.mapas = { Lymhurst: ['Visible Map'] };
+  state.registros = { Lymhurst: { 'Visible Map': [] } };
+  state.scoutsActivos = {
+    hiddenUser: [{ ciudad: 'Lymhurst', mapa: 'Visible Map', inicio: now - 65 * 60 * 1000, username: 'Hidden' }],
+  };
+  state.historialDia = [];
+  state.historialScouts = [];
+
+  const removed = reconcileRegisteredActiveScouts({ preserveCredit: true, now });
+  assert.equal(removed.length, 1);
+  assert.equal(state.historialDia.length, 1);
+  assert.equal(state.historialDia[0].duracionMin, 65);
+  assert.equal(state.historialDia[0].motivo, 'sesion_residual_recuperada');
+});

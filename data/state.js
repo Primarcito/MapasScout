@@ -62,6 +62,10 @@ module.exports = {
   // Timestamp de la última edición de mapas
   ultimaEdicion: null,
 
+  // Último cierre diario completado. Permite recuperar un reset perdido tras
+  // un redeploy o reinicio de Railway.
+  lastDailyResetAt: null,
+
   revisionMessage: null,
   revisionMobileMessage: null,
   // revisionEstado[ciudad__mapa] = { revisadoEn: timestamp, revisores: [...] }

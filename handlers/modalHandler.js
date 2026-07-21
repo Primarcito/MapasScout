@@ -10,6 +10,7 @@ const { mapChangesPreview } = require('../components/mapConfigComponents');
 const { asignarTiempoManual } = require('../utils/scouts');
 const { addAuditEntry } = require('../utils/audit');
 const { parseTimeAdjustmentToMinutes } = require('../utils/timeInput');
+const { sendScoutLog, formatUser } = require('../utils/scoutLogs');
 
 function formatTime(value) {
   const absolute = Math.abs(value);
@@ -82,6 +83,14 @@ module.exports = async function handleModal(interaction) {
     if (!result.appliedMinutes) {
       return interaction.reply({ content: `<@${userId}> no tiene tiempo disponible para restar.`, flags: MessageFlags.Ephemeral });
     }
+    const adjustment = `${result.appliedMinutes > 0 ? '+' : '-'}${formatTime(result.appliedMinutes)}`;
+    await sendScoutLog('TIEMPO_AJUSTADO', [
+      `Scout: ${formatUser(userId, user?.globalName || user?.username || userId)}`,
+      `Ajuste: ${adjustment}`,
+      `Total: ${formatTime(result.totalMinutes)}`,
+      `Motivo: ${reason}`,
+      `Administrador: ${formatUser(interaction.user.id, interaction.user.username)}`,
+    ]);
     return interaction.reply({
       content: `✅ Se ${result.appliedMinutes > 0 ? 'sumaron' : 'restaron'} **${formatTime(result.appliedMinutes)}** a <@${userId}>. Total: **${formatTime(result.totalMinutes)}**.`,
       flags: MessageFlags.Ephemeral,

@@ -6,7 +6,7 @@ const { guardarDatos, guardarScouts, guardarRevisionPanel } = require('../data/p
 const { respuestaCiudades, respuestaMapas } = require('../components/panelComponents');
 const { componentesRevision } = require('../components/revisionComponents');
 const { generarEmbedRevision } = require('../embeds/revisionEmbed');
-const { guardarUltimosMapas, cerrarScoutsActivos, borrarRegistrosUsuario } = require('../utils/scouts');
+const { guardarUltimosMapas, cerrarScoutsActivos, cerrarScoutsActivosFiltrados, borrarRegistrosUsuario } = require('../utils/scouts');
 const { actualizarPanel, actualizarRevision } = require('../utils/panel');
 const { verificarMapaVacio } = require('../utils/alerts');
 const { isVerificationButton, handleVerificationButton, cancelScoutVerification, normalizeVerificationMode } = require('../utils/verification');
@@ -339,27 +339,16 @@ module.exports = async function handleButton(interaction) {
 
     if (state.registros[ciudad][mapa].includes(userId)) {
       // Ya está anotado → desanotarlo
+      // Cerrar antes de quitar el registro: así se conserva el tiempo y la
+      // cobertura usando la misma lógica que dropear, admin y verificación.
+      cerrarScoutsActivosFiltrados(
+        userId,
+        entry => entry.ciudad === ciudad && entry.mapa === mapa,
+        interaction.user.username,
+        'salida_manual'
+      );
       state.registros[ciudad][mapa] = state.registros[ciudad][mapa].filter(id => id !== userId);
-
-      // Cerrar scout activo de ese mapa
-      if (state.scoutsActivos[userId]) {
-        const entry = state.scoutsActivos[userId].find(e => e.ciudad === ciudad && e.mapa === mapa);
-        if (entry) {
-          const duracionMin = Math.floor((Date.now() - entry.inicio) / 60000);
-          const reg = { userId, username: interaction.user.username, ciudad, mapa, inicio: entry.inicio, fin: Date.now(), duracionMin };
-          state.historialScouts.push(reg);
-          state.historialDia.push(reg);
-          state.scoutsActivos[userId] = state.scoutsActivos[userId].filter(e => !(e.ciudad === ciudad && e.mapa === mapa));
-          await cancelScoutVerification(userId, "Verificacion cancelada: cambiaste tus mapas activos.");
-          if (state.scoutsActivos[userId].length === 0) {
-            delete state.scoutsActivos[userId];
-          }
-          // Track ultima actividad para alerta 30min
-          const cobKey2 = `${ciudad}__${mapa}`;
-          if (!state.coberturaDia[cobKey2]) state.coberturaDia[cobKey2] = { ciudad, mapa, minutos: 0 };
-          state.coberturaDia[cobKey2].ultimaActividad = Date.now();
-        }
-      }
+      await cancelScoutVerification(userId, "Verificacion cancelada: cambiaste tus mapas activos.");
 
       guardarDatos();
       guardarScouts();

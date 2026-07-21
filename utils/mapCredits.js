@@ -3,6 +3,14 @@ const { calcularTiempoReal } = require('./timeCalc');
 
 const MINUTES_PER_VALID_MAP = 60;
 
+function isCurrentMapKey(key) {
+  const separator = String(key).indexOf('__');
+  if (separator < 1) return false;
+  const ciudad = String(key).slice(0, separator);
+  const mapa = String(key).slice(separator + 2);
+  return Boolean(state.mapas?.[ciudad]?.includes(mapa));
+}
+
 function collectDailyMapSessions(now = Date.now()) {
   const byUser = {};
   const add = (userId, entry, fin = entry.fin) => {
@@ -22,8 +30,9 @@ function collectDailyMapSessions(now = Date.now()) {
   return byUser;
 }
 
-function projectDailyMapCredits(now = Date.now()) {
+function projectDailyMapCredits(now = Date.now(), options = {}) {
   const sessions = collectDailyMapSessions(now);
+  const includeBalances = options.includeBalances !== false;
   const userIds = new Set([
     ...Object.keys(state.mapMinuteBalances || {}),
     ...Object.keys(sessions),
@@ -31,12 +40,16 @@ function projectDailyMapCredits(now = Date.now()) {
   const result = {};
 
   for (const userId of userIds) {
-    const previous = state.mapMinuteBalances?.[userId] || {};
+    const previous = includeBalances ? (state.mapMinuteBalances?.[userId] || {}) : {};
+    // El resumen diario solo puede acreditar mapas de la configuración que
+    // está vigente. Los saldos de mapas retirados no deben aparecer como
+    // actividad actual ni mezclarse con la cobertura del panel.
     const mapKeys = new Set([...Object.keys(previous), ...Object.keys(sessions[userId] || {})]);
     const pending = {};
     let validMaps = 0;
 
     for (const key of mapKeys) {
+      if (!isCurrentMapKey(key)) continue;
       const priorMinutes = Math.max(0, Number(previous[key]) || 0);
       const dailyMinutes = calcularTiempoReal(sessions[userId]?.[key] || []);
       const totalMinutes = priorMinutes + dailyMinutes;
@@ -63,6 +76,7 @@ function commitDailyMapCredits(now = Date.now()) {
 
 module.exports = {
   MINUTES_PER_VALID_MAP,
+  isCurrentMapKey,
   collectDailyMapSessions,
   projectDailyMapCredits,
   commitDailyMapCredits,

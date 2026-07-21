@@ -12,13 +12,33 @@ function getRegisteredActiveEntries(userId) {
   return (state.scoutsActivos[String(userId)] || []).filter(entry => isRegisteredActiveEntry(userId, entry));
 }
 
-function reconcileRegisteredActiveScouts() {
+function reconcileRegisteredActiveScouts(options = {}) {
   const removed = [];
+  const now = options.now || Date.now();
   for (const userId of Object.keys(state.scoutsActivos || {})) {
     const original = state.scoutsActivos[userId] || [];
     const valid = original.filter(entry => isRegisteredActiveEntry(userId, entry));
     if (valid.length === original.length) continue;
-    removed.push(...original.filter(entry => !isRegisteredActiveEntry(userId, entry)).map(entry => ({ userId, ...entry })));
+    const stale = original.filter(entry => !isRegisteredActiveEntry(userId, entry));
+    removed.push(...stale.map(entry => ({ userId, ...entry })));
+    if (options.preserveCredit) {
+      for (const entry of stale) {
+        const inicio = Number(entry.inicio) || now;
+        const duracionMin = Math.max(0, Math.floor((now - inicio) / 60000));
+        const registro = {
+          userId,
+          username: entry.username || userId,
+          ciudad: entry.ciudad,
+          mapa: entry.mapa,
+          inicio,
+          fin: now,
+          duracionMin,
+          motivo: 'sesion_residual_recuperada',
+        };
+        state.historialScouts.push(registro);
+        state.historialDia.push(registro);
+      }
+    }
     if (valid.length) state.scoutsActivos[userId] = valid;
     else delete state.scoutsActivos[userId];
   }
