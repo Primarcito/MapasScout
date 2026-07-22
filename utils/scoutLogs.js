@@ -18,7 +18,60 @@ function formatUser(userId, username = null) {
 
 async function sendScoutLog(type, lines) {
   const timestamp = Math.floor(Date.now() / 1000);
-  const content = `**[${type}]** <t:${timestamp}:T>\n${lines.join('\n')}`;
+  
+  let scout = '';
+  let mapas = '';
+  const otros = [];
+
+  for (const line of lines) {
+    if (!line) continue;
+    const match = String(line).match(/^([^:]+):\s*(.*)$/);
+    if (match) {
+      const key = match[1].trim().toLowerCase();
+      const val = match[2].trim();
+      if (key === 'scout') {
+        scout = val;
+      } else if (key === 'mapa' || key === 'mapas') {
+        mapas = val;
+      } else {
+        otros.push(`${match[1].trim()}: **${val}**`);
+      }
+    } else {
+      otros.push(line);
+    }
+  }
+
+  // Elegir emoji y acrónimo para hacerlo más corto
+  let emoji = 'ℹ️';
+  let shortType = type;
+  if (type === 'ANOTADO') {
+    emoji = '🟢';
+  } else if (type === 'RETIRADO') {
+    emoji = '🔴';
+  } else if (type === 'VERIFICACION_ENVIADA') {
+    emoji = '⚠️';
+    shortType = 'VERIF_ENVIADA';
+  } else if (type === 'VERIFICADO') {
+    emoji = '✅';
+  } else if (type === 'VERIFICACION_CAPTURA') {
+    emoji = '📸';
+    shortType = 'VERIF_FOTO';
+  } else if (type === 'VERIFICACION_APROBADA') {
+    emoji = '❇️';
+    shortType = 'VERIF_APROBADA';
+  } else if (type === 'VERIFICACION_RECHAZADA') {
+    emoji = '❌';
+    shortType = 'VERIF_RECHAZADA';
+  }
+
+  const parts = [
+    `${emoji} **[${shortType}]** <t:${timestamp}:T>`,
+    scout ? `${scout}` : '',
+    otros.length > 0 ? otros.join(' · ') : '',
+    mapas ? `🗺️ ${mapas}` : ''
+  ].filter(Boolean);
+
+  const content = parts.join(' | ');
 
   if (!state.client) return;
 
