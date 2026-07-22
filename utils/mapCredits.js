@@ -1,7 +1,8 @@
 const state = require('../data/state');
 const { calcularTiempoReal } = require('./timeCalc');
 
-const MINUTES_PER_VALID_MAP = 60;
+const MINUTES_PER_TIME_UNIT = 240; // 4 horas
+const MAPS_PER_MAP_UNIT = 3;       // 3 mapas
 
 function isCurrentMapKey(key) {
   const separator = String(key).indexOf('__');
@@ -30,52 +31,81 @@ function collectDailyMapSessions(now = Date.now()) {
   return byUser;
 }
 
+function collectDailyManualMinutes(now = Date.now()) {
+  const byUser = {};
+  for (const entry of state.historialDia || []) {
+    if (entry && entry.manualTimeAdjustment && !entry.provisional) {
+      const id = String(entry.userId);
+      if (!id) continue;
+      byUser[id] = (byUser[id] || 0) + (Number(entry.duracionMin) || 0);
+    }
+  }
+  return byUser;
+}
+
 function projectDailyMapCredits(now = Date.now(), options = {}) {
   const sessions = collectDailyMapSessions(now);
+  const manualMinutes = collectDailyManualMinutes(now);
   const includeBalances = options.includeBalances !== false;
   const userIds = new Set([
+    ...Object.keys(state.timeMinuteBalances || {}),
     ...Object.keys(state.mapMinuteBalances || {}),
     ...Object.keys(sessions),
+    ...Object.keys(manualMinutes),
   ]);
   const result = {};
 
   for (const userId of userIds) {
-    const previous = includeBalances ? (state.mapMinuteBalances?.[userId] || {}) : {};
-    // El resumen diario solo puede acreditar mapas de la configuración que
-    // está vigente. Los saldos de mapas retirados no deben aparecer como
-    // actividad actual ni mezclarse con la cobertura del panel.
-    const mapKeys = new Set([...Object.keys(previous), ...Object.keys(sessions[userId] || {})]);
-    const pending = {};
+    const userSessions = sessions[userId] || {};
     let validMaps = 0;
+    const userAllSessions = [];
 
-    for (const key of mapKeys) {
+    for (const key of Object.keys(userSessions)) {
       if (!isCurrentMapKey(key)) continue;
-      const priorMinutes = Math.max(0, Number(previous[key]) || 0);
-      const dailyMinutes = calcularTiempoReal(sessions[userId]?.[key] || []);
-      const totalMinutes = priorMinutes + dailyMinutes;
-      if (dailyMinutes > 0 && totalMinutes >= MINUTES_PER_VALID_MAP) {
+      const dailyMinutes = calcularTiempoReal(userSessions[key]);
+      if (dailyMinutes > 0) {
         validMaps += 1;
-      } else if (totalMinutes > 0 && totalMinutes < MINUTES_PER_VALID_MAP) {
-        pending[key] = totalMinutes;
       }
+      userAllSessions.push(...userSessions[key]);
     }
-    result[userId] = { validMaps, pending };
+
+    const todayTime = Math.max(0, calcularTiempoReal(userAllSessions) + (manualMinutes[userId] || 0));
+    const priorMinutes = includeBalances ? Math.max(0, Number(state.timeMinuteBalances?.[userId]) || 0) : 0;
+    const totalEffectiveMinutes = todayTime + priorMinutes;
+
+    const timeUnits = Math.floor(totalEffectiveMinutes / MINUTES_PER_TIME_UNIT);
+    const pendingMinutes = totalEffectiveMinutes % MINUTES_PER_TIME_UNIT;
+    const mapUnits = Math.floor(validMaps / MAPS_PER_MAP_UNIT);
+    const totalUnits = timeUnits + mapUnits;
+
+    result[userId] = {
+      validMaps,
+      todayTime,
+      priorMinutes,
+      totalEffectiveMinutes,
+      timeUnits,
+      mapUnits,
+      totalUnits,
+      pendingMinutes,
+      pending: { time: pendingMinutes },
+    };
   }
   return result;
 }
 
 function commitDailyMapCredits(now = Date.now()) {
-  const projection = projectDailyMapCredits(now);
-  state.mapMinuteBalances = Object.fromEntries(
+  const projection = projectDailyMapCredits(now, { includeBalances: true });
+  state.timeMinuteBalances = Object.fromEntries(
     Object.entries(projection)
-      .filter(([, value]) => Object.keys(value.pending).length > 0)
-      .map(([userId, value]) => [userId, value.pending])
+      .filter(([, value]) => value.pendingMinutes > 0)
+      .map(([userId, value]) => [userId, value.pendingMinutes])
   );
   return projection;
 }
 
 module.exports = {
-  MINUTES_PER_VALID_MAP,
+  MINUTES_PER_TIME_UNIT,
+  MAPS_PER_MAP_UNIT,
   isCurrentMapKey,
   collectDailyMapSessions,
   projectDailyMapCredits,

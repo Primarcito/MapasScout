@@ -4,7 +4,7 @@ const { sincronizarMensajeAlertas } = require('./alerts');
 const { cerrarScoutsActivos } = require('./scouts');
 const { actualizarPanel, actualizarRevision } = require('./panel');
 const { generarEmbedsHistorial } = require('../commands/scout');
-const { cancelScoutVerification } = require('./verification');
+const { cancelScoutVerification, approveProvisionalVerification } = require('./verification');
 const config = require('../config');
 const { addAuditEntry } = require('./audit');
 const { commitDailyMapCredits } = require('./mapCredits');
@@ -48,13 +48,11 @@ async function recoverMissedDailyReset(now = Date.now()) {
   const periodStart = currentPeriodStart(now);
   if (Number(state.lastDailyResetAt) >= periodStart) return false;
 
-  // Migración segura para instalaciones antiguas: si todo lo presente ya
-  // pertenece al período actual, solo guardamos la marca sin borrar nada.
-  const timestamps = [
-    ...(state.historialDia || []).filter(entry => !entry.manualTimeAdjustment).map(entry => Number(entry.inicio)),
-    ...Object.values(state.scoutsActivos || {}).flat().map(entry => Number(entry.inicio)),
-  ].filter(Number.isFinite);
-  if (!state.lastDailyResetAt && timestamps.every(timestamp => timestamp >= periodStart)) {
+  // Primera ejecución tras migración: nunca destruir datos activos
+  // (historialDia, coberturaDia, scoutsActivos, ultimosMapas).
+  // Solo persiste la marca del período; el siguiente reset real
+  // (10 UTC) o una reconexión posterior hará la transición.
+  if (!state.lastDailyResetAt) {
     state.lastDailyResetAt = periodStart;
     guardarDatos();
     return false;
@@ -74,6 +72,15 @@ function resetDailyRevisionState() {
 async function ejecutarReset(options = {}) {
   console.log("Ejecutando reset diario...");
   const resetAt = options.resetAt || Date.now();
+
+  // Aprobar verificaciones en espera de revision ANTES de archivar, para que
+  // su credito provisional quede registrado en el periodo que corresponde.
+  for (const userId of Object.keys(state.verificacionesScout)) {
+    const pending = state.verificacionesScout[userId];
+    if (pending?.status === 'waiting_review') {
+      await approveProvisionalVerification(userId, pending);
+    }
+  }
 
   // Auto-postear historial antes de borrar
   try {
@@ -96,7 +103,10 @@ async function ejecutarReset(options = {}) {
   // Consolidar minutos por mapa una sola vez después de publicar el resumen.
   commitDailyMapCredits(resetAt);
   // El ranking semanal reinicia los lunes a las 10 UTC; los pendientes no cruzan semana.
-  if (new Date(resetAt).getUTCDay() === 1) state.mapMinuteBalances = {};
+  if (new Date(resetAt).getUTCDay() === 1) {
+    state.mapMinuteBalances = {};
+    state.timeMinuteBalances = {};
+  }
 
   // Cerrar el periodo anterior antes de activar la configuracion siguiente.
   for (const userId in state.scoutsActivos) {

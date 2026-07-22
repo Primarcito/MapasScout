@@ -820,7 +820,7 @@ async function handleVerificationScreenshotMessage(message) {
   pending.evidenceUrl = evidenceMessage.url;
   pending.username = message.author.username;
   pending.provisionalVerificationId = evidenceMessage.id;
-  pending.reviewExpiresAt = null;
+  pending.reviewExpiresAt = now + getVerificationConfig().reviewReminderMinutes * 4 * 60000;
   pending.creditPenaltyMs = calculatePhotoPenaltyMs(pending, now);
   const createdAt = Number(pending.createdAt) || now;
   const responseAt = Number(pending.screenshotRequestedAt) || createdAt;

@@ -19,7 +19,10 @@ module.exports = {
   // Cobertura: tiempo total por mapa { "ciudad__mapa": { ciudad, mapa, minutos, ... } }
   coberturaDia: {},
 
-  // Minutos pendientes (< 60) por scout y mapa para acreditar mapas entre días.
+  // Minutos pendientes por scout para acumular unidades de tiempo (4h) entre días.
+  timeMinuteBalances: {},
+
+  // Minutos pendientes (< 60) por scout y mapa para acreditar mapas entre días (legacy).
   mapMinuteBalances: {},
 
   // mapasEnAlerta[ciudad__mapa] = { ciudad, mapa, vacioDesde }

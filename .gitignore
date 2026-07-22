@@ -1,2 +1,6 @@
 node_modules
 .env
+data.json
+scouts.json
+panel.json
+revision_panel.json

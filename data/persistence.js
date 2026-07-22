@@ -11,6 +11,7 @@ const {
 } = require('../utils/mapNames');
 
 const ROOT = config.DATA_DIR || path.join(__dirname, '..');
+console.log(`[Persistencia] Usando directorio de datos: ${path.resolve(ROOT)}`);
 
 function ensureRoot() {
   if (!fs.existsSync(ROOT)) fs.mkdirSync(ROOT, { recursive: true });
@@ -61,6 +62,7 @@ function guardarScouts() {
       logAdmin: state.logAdmin,
       coberturaDia: state.coberturaDia,
       mapMinuteBalances: state.mapMinuteBalances,
+      timeMinuteBalances: state.timeMinuteBalances,
     }, null, 2)
   );
 }
@@ -79,9 +81,29 @@ function cargarScouts() {
     state.historialDia = (data.historialDia || []).map(e => ({ ...e, mapa: normalizarNombreMapa(e.mapa) }));
     state.verificacionesScout = data.verificaciones || {};
     state.logAdmin = data.logAdmin || [];
-    state.coberturaDia = data.coberturaDia || {};
+    state.coberturaDia = normalizarCoberturaDia(data.coberturaDia || {});
     state.mapMinuteBalances = normalizarSaldosDeMapas(data.mapMinuteBalances || {});
+    state.timeMinuteBalances = data.timeMinuteBalances || {};
   }
+}
+
+function normalizarCoberturaDia(cobertura) {
+  const resultado = {};
+  for (const [key, value] of Object.entries(cobertura || {})) {
+    const sep = String(key).indexOf('__');
+    if (sep < 1) continue;
+    const ciudad = String(key).slice(0, sep).trim();
+    const mapa = normalizarNombreMapa(String(key).slice(sep + 2));
+    if (!ciudad || !mapa) continue;
+    const normalKey = `${ciudad}__${mapa}`;
+    resultado[normalKey] = {
+      ...value,
+      ciudad,
+      mapa,
+      minutos: Math.max(resultado[normalKey]?.minutos || 0, Number(value?.minutos) || 0),
+    };
+  }
+  return resultado;
 }
 
 function normalizarSaldosDeMapas(saldos) {
