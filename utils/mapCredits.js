@@ -49,7 +49,6 @@ function projectDailyMapCredits(now = Date.now(), options = {}) {
   const includeBalances = options.includeBalances !== false;
   const userIds = new Set([
     ...Object.keys(state.timeMinuteBalances || {}),
-    ...Object.keys(state.mapMinuteBalances || {}),
     ...Object.keys(sessions),
     ...Object.keys(manualMinutes),
   ]);
@@ -58,7 +57,7 @@ function projectDailyMapCredits(now = Date.now(), options = {}) {
   for (const userId of userIds) {
     const userSessions = sessions[userId] || {};
     let validMaps = 0;
-    const userAllSessions = [];
+    const scoutSessions = [];
 
     for (const key of Object.keys(userSessions)) {
       if (!isCurrentMapKey(key)) continue;
@@ -66,20 +65,24 @@ function projectDailyMapCredits(now = Date.now(), options = {}) {
       if (dailyMinutes > 0) {
         validMaps += 1;
       }
-      userAllSessions.push(...userSessions[key]);
+      scoutSessions.push(...userSessions[key]);
     }
 
-    const todayTime = Math.max(0, calcularTiempoReal(userAllSessions) + (manualMinutes[userId] || 0));
+    const scoutActivityMinutes = Math.max(0, calcularTiempoReal(scoutSessions));
+    const todayTime = Math.max(0, scoutActivityMinutes + (manualMinutes[userId] || 0));
     const priorMinutes = includeBalances ? Math.max(0, Number(state.timeMinuteBalances?.[userId]) || 0) : 0;
     const totalEffectiveMinutes = todayTime + priorMinutes;
 
     const timeUnits = Math.floor(totalEffectiveMinutes / MINUTES_PER_TIME_UNIT);
     const pendingMinutes = totalEffectiveMinutes % MINUTES_PER_TIME_UNIT;
-    const mapUnits = Math.floor(validMaps / MAPS_PER_MAP_UNIT);
+    const mapUnits = scoutActivityMinutes >= 60
+      ? Math.floor(validMaps / MAPS_PER_MAP_UNIT)
+      : 0;
     const totalUnits = timeUnits + mapUnits;
 
     result[userId] = {
       validMaps,
+      scoutActivityMinutes,
       todayTime,
       priorMinutes,
       totalEffectiveMinutes,

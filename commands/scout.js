@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const state = require('../data/state');
 const { calcularTiempoReal } = require('../utils/timeCalc');
 const { getRevisionMultiplier } = require('../utils/revisionRounds');
@@ -49,9 +49,37 @@ function generarEmbedHistorial(now = Date.now()) {
   return generarEmbedsHistorial(now)[0];
 }
 
+function formatMinutes(minutes) {
+  const safeMinutes = Math.max(0, Math.floor(Number(minutes) || 0));
+  const hours = Math.floor(safeMinutes / 60);
+  const remainder = safeMinutes % 60;
+  return hours ? `${hours}h ${remainder}m` : `${remainder}m`;
+}
+
+function crearEmbedActividadPersonal(userId, now = Date.now()) {
+  const id = String(userId);
+  const sessions = [];
+  let manualMinutes = 0;
+  for (const entry of state.historialDia || []) {
+    if (!entry || entry.provisional || String(entry.userId) !== id) continue;
+    if (entry.manualTimeAdjustment) manualMinutes += Number(entry.duracionMin) || 0;
+    else sessions.push({ inicio: entry.inicio, fin: entry.fin || now });
+  }
+  for (const entry of state.scoutsActivos?.[id] || []) {
+    if (!entry?.provisional) sessions.push({ inicio: entry.inicio, fin: now });
+  }
+  const todayMinutes = Math.max(0, calcularTiempoReal(sessions) + manualMinutes);
+  const savedMinutes = Math.max(0, Number(state.timeMinuteBalances?.[id]) || 0);
+  const accumulatedMinutes = todayMinutes + savedMinutes;
+  return new EmbedBuilder()
+    .setTitle('Tu actividad hasta ahora')
+    .setColor(0x5865f2)
+    .setDescription(`Tiempo de hoy: **${formatMinutes(todayMinutes)}**\nSaldo guardado: **${formatMinutes(savedMinutes)}**\nAcumulado para tiempo: **${formatMinutes(accumulatedMinutes)} / 4h**`);
+}
+
 function generarEmbedsHistorial(summaryNow = Date.now()) {
-  // Los saldos pendientes se conservan internamente, pero no convierten
   // minutos de otro período en mapas extra dentro del resumen de hoy.
+  // Los saldos pendientes se conservan internamente, pero no convierten
   const mapCredits = projectDailyMapCredits(summaryNow, { includeBalances: false });
   // Combinar historialDia con sesiones activas
   const todasSesiones = state.historialDia.filter(entry => !entry.provisional);
@@ -169,11 +197,12 @@ function generarEmbedsHistorial(summaryNow = Date.now()) {
   return dividirEnEmbedsHistorial(header, lineasRanking, footer);
 }
 
-async function enviarEmbedsPaginados(interaction, embeds) {
-  await interaction.reply({ embeds: [embeds[0]] });
+async function enviarEmbedsPaginados(interaction, embeds, { ephemeral = false } = {}) {
+  const visibility = ephemeral ? { flags: MessageFlags.Ephemeral } : {};
+  await interaction.reply({ embeds: [embeds[0]], ...visibility });
 
   for (const embed of embeds.slice(1)) {
-    await interaction.followUp({ embeds: [embed] });
+    await interaction.followUp({ embeds: [embed], ...visibility });
   }
 }
 
@@ -207,10 +236,12 @@ module.exports = {
 
   generarEmbedHistorial,
   generarEmbedsHistorial,
+  crearEmbedActividadPersonal,
   csvCell,
   sesionesExportables,
 
   async execute(interaction) {
-    return enviarEmbedsPaginados(interaction, generarEmbedsHistorial());
+    const now = Date.now();
+    return enviarEmbedsPaginados(interaction, [crearEmbedActividadPersonal(interaction.user.id, now), ...generarEmbedsHistorial(now)], { ephemeral: true });
   }
 };
