@@ -14,7 +14,7 @@ const { sendScoutLog, formatMaps, formatUser } = require('../utils/scoutLogs');
 const { tickRevisionRound, getRevisionMultiplier, revisionConfig } = require('../utils/revisionRounds');
 const { payloadAjusteMultiplier } = require('../components/revisionMultiplierComponents');
 const { mapConfigPanel, mapListEmbed, confirmClearMaps } = require('../components/mapConfigComponents');
-const { adminPanel, adminScoutsPanel, adminVerificationsPanel, adminRevisionsPanel, activeScoutsEmbed, verificationQueueEmbed, auditEmbed, verificationModePanel } = require('../components/adminComponents');
+const { adminPanel, adminScoutsPanel, adminVerificationsPanel, adminRevisionsPanel, activeScoutsEmbed, timeBalancesEmbed, verificationQueueEmbed, auditEmbed, verificationModePanel } = require('../components/adminComponents');
 const { userPicker, multipliersPanel } = require('../utils/adminActions');
 const { takePendingMapChanges, applyMapChanges, scheduleMapChanges, clearScheduledMaps, clearActiveMaps } = require('../utils/mapManagement');
 const { addAuditEntry } = require('../utils/audit');
@@ -157,6 +157,9 @@ module.exports = async function handleButton(interaction) {
         embeds: [new EmbedBuilder().setTitle('Asignar o restar tiempo').setDescription('Selecciona un scout y luego indica horas o minutos.').setColor(0x5865f2)],
         components: [userPicker('select_admin_assign_hours', 'Selecciona un scout'), backRow()],
       });
+    }
+    if (interaction.customId === 'admin_time_balances') {
+      return interaction.update({ embeds: [timeBalancesEmbed()], components: [backRow('admin_section_scouts')] });
     }
     if (interaction.customId === 'admin_multipliers') {
       await interaction.deferUpdate();

@@ -31,7 +31,12 @@ function adminScoutsPanel({ sensitive = false } = {}) {
     new ButtonBuilder().setCustomId('admin_active_scouts').setLabel('Ver activos').setEmoji(buttonEmoji('ACTIVE')).setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('admin_remove_scout').setLabel('Retirar').setEmoji(buttonEmoji('DROP')).setStyle(ButtonStyle.Danger),
   ];
-  if (sensitive) buttons.push(new ButtonBuilder().setCustomId('admin_assign_hours').setLabel('Asignar horas').setStyle(ButtonStyle.Secondary));
+  if (sensitive) {
+    buttons.push(
+      new ButtonBuilder().setCustomId('admin_assign_hours').setLabel('Asignar horas').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('admin_time_balances').setLabel('Ver saldos').setStyle(ButtonStyle.Secondary),
+    );
+  }
   buttons.push(homeButton());
   return {
     embeds: [new EmbedBuilder().setTitle('Gestión de scouts').setColor(0x3498db).setDescription('Consulta scouts visibles en el panel o administra su actividad.')],
@@ -86,6 +91,24 @@ function activeScoutsEmbed() {
     .setDescription(lines.join('\n') || 'No hay scouts activos.');
 }
 
+function timeBalancesEmbed() {
+  const balances = Object.entries(state.timeMinuteBalances || {})
+    .map(([userId, rawMinutes]) => [userId, Math.max(0, Math.floor(Number(rawMinutes) || 0))])
+    .filter(([, minutes]) => minutes > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const lines = balances.slice(0, 40).map(([userId, minutes]) => {
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    const formatted = hours ? `${hours}h ${remainder}m` : `${remainder}m`;
+    return `- <@${userId}> - **${formatted}** acumulados`;
+  });
+  return new EmbedBuilder()
+    .setTitle(`Saldos de tiempo - ${balances.length}`)
+    .setColor(balances.length ? 0x5865f2 : 0x57f287)
+    .setDescription(lines.join('\n') || 'No hay minutos acumulados pendientes.')
+    .setFooter({ text: 'Los saldos se aplican al calculo de bloques de 4 horas.' });
+}
+
 function verificationQueueEmbed() {
   const entries = Object.entries(state.verificacionesScout || {});
   const lines = entries.slice(0, 40).map(([userId, pending]) => {
@@ -131,6 +154,7 @@ function verificationModePanel() {
 
 module.exports = {
   adminPanel,
+  timeBalancesEmbed,
   adminScoutsPanel,
   adminVerificationsPanel,
   adminRevisionsPanel,

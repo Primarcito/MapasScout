@@ -10,7 +10,7 @@ const exportarCommand = require('../commands/mapasExportar');
 const adminCommand = require('../commands/admin');
 const { parseBulkMapInput, mapChangesDiff } = require('../utils/mapManagement');
 const { cerrarScoutsActivosFiltrados } = require('../utils/scouts');
-const { adminPanel, adminScoutsPanel, adminVerificationsPanel, adminRevisionsPanel } = require('../components/adminComponents');
+const { adminPanel, adminScoutsPanel, adminVerificationsPanel, adminRevisionsPanel, timeBalancesEmbed } = require('../components/adminComponents');
 
 function memberWith(...roles) {
   return { roles: { cache: { has: id => roles.includes(id) } } };
@@ -42,9 +42,26 @@ test('el panel operativo no muestra acciones sensibles', () => {
   const seniorIds = [adminScoutsPanel({ sensitive: true }), adminVerificationsPanel({ sensitive: true }), adminRevisionsPanel({ sensitive: true })].flatMap(ids);
   assert.deepEqual(mainIds, ['admin_section_scouts', 'admin_section_verifications', 'admin_section_revisions', 'admin_audit']);
   assert.equal(operatorIds.includes('admin_assign_hours'), false);
+  assert.equal(operatorIds.includes('admin_time_balances'), false);
   assert.equal(operatorIds.includes('admin_multipliers'), false);
   assert.equal(seniorIds.includes('admin_assign_hours'), true);
+  assert.equal(seniorIds.includes('admin_time_balances'), true);
   assert.equal(seniorIds.includes('admin_multipliers'), true);
+});
+
+
+test('el panel de saldos muestra solo minutos acumulados y los ordena', () => {
+  const previous = state.timeMinuteBalances;
+  state.timeMinuteBalances = { bajo: 30, alto: 125, cero: 0 };
+  try {
+    const description = timeBalancesEmbed().data.description;
+    assert.match(description, /<@alto>.*2h 5m/);
+    assert.match(description, /<@bajo>.*30m/);
+    assert.equal(description.includes('<@cero>'), false);
+    assert.ok(description.indexOf('<@alto>') < description.indexOf('<@bajo>'));
+  } finally {
+    state.timeMinuteBalances = previous;
+  }
 });
 
 test('la importacion reconoce ciudades y genera un diferencial', () => {
