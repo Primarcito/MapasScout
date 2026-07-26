@@ -6,25 +6,38 @@ const { projectDailyMapCredits } = require('../utils/mapCredits');
 
 const EMBED_SAFE_DESCRIPTION_LIMIT = 3900;
 
-function crearEmbedHistorial(desc, page = 1, totalPages = 1) {
-  const title = totalPages > 1
-    ? `📊 Resumen del Día ${page}/${totalPages}`
-    : "📊 Resumen del Día";
+function summarySourceKey(summaryNow, page, totalPages) {
+  // El resumen de las 10 UTC representa el periodo diario que acaba de cerrar.
+  const periodStart = new Date(summaryNow - (24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+  return `rankingbot:scouteo:v1:${periodStart}:p${page}of${totalPages}`;
+}
 
-  return new EmbedBuilder()
+function crearEmbedHistorial(desc, page = 1, totalPages = 1, sourceKey = null) {
+  const title = totalPages > 1
+    ? `?? Resumen del D?a ${page}/${totalPages}`
+    : "?? Resumen del D?a";
+
+  const embed = new EmbedBuilder()
     .setTitle(title)
     .setColor(0x2b2d31)
     .setDescription(desc);
+  if (sourceKey) embed.setFooter({ text: sourceKey });
+  return embed;
 }
 
-function dividirEnEmbedsHistorial(header, lines, footer) {
+function dividirEnEmbedsHistorial(header, lines, footer, summaryNow) {
   const paginas = [];
   let paginaActual = [];
 
   const crearDescripcion = (pageLines) => `${header}\n\n${pageLines.join("")}\n${footer}`;
 
   if (lines.length === 0) {
-    return [crearEmbedHistorial(crearDescripcion(["No hay actividad registrada hoy.\n"]))];
+    return [crearEmbedHistorial(
+      crearDescripcion(["No hay actividad registrada hoy.\n"]),
+      1,
+      1,
+      summarySourceKey(summaryNow, 1, 1),
+    )];
   }
 
   for (const line of lines) {
@@ -41,7 +54,12 @@ function dividirEnEmbedsHistorial(header, lines, footer) {
 
   const totalPages = paginas.length;
   return paginas.map((pageLines, index) => (
-    crearEmbedHistorial(crearDescripcion(pageLines), index + 1, totalPages)
+    crearEmbedHistorial(
+      crearDescripcion(pageLines),
+      index + 1,
+      totalPages,
+      summarySourceKey(summaryNow, index + 1, totalPages),
+    )
   ));
 }
 
@@ -197,7 +215,7 @@ function generarEmbedsHistorial(summaryNow = Date.now()) {
   const header = `**${fechaHoy}**\n\n👥 ${sorted.length} scouts  •  ⏱️ ${tiempoGlobal}  •  🗺️ ${mapasCubiertos}/${totalMapas}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
   const footer = `📊 **${pct}% cobertura** • Se reinicia a las 10 UTC`;
 
-  return dividirEnEmbedsHistorial(header, lineasRanking, footer);
+  return dividirEnEmbedsHistorial(header, lineasRanking, footer, summaryNow);
 }
 
 async function enviarEmbedsPaginados(interaction, embeds, { ephemeral = false } = {}) {
