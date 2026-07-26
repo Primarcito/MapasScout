@@ -35,7 +35,8 @@ test('el historial personal muestra tiempo actual, saldo y responde de forma efi
       async followUp(payload) { followUps.push(payload); },
     });
     assert.equal(replies[0].flags, 64);
-    assert.ok(followUps.every(payload => payload.flags === 64));
+    assert.equal(replies[0].embeds.length, 2);
+    assert.equal(followUps.length, 0);
   } finally {
     Object.assign(state, previous);
   }

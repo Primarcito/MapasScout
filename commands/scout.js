@@ -202,10 +202,12 @@ function generarEmbedsHistorial(summaryNow = Date.now()) {
 
 async function enviarEmbedsPaginados(interaction, embeds, { ephemeral = false } = {}) {
   const visibility = ephemeral ? { flags: MessageFlags.Ephemeral } : {};
-  await interaction.reply({ embeds: [embeds[0]], ...visibility });
+  const chunks = [];
+  for (let index = 0; index < embeds.length; index += 10) chunks.push(embeds.slice(index, index + 10));
+  await interaction.reply({ embeds: chunks[0], ...visibility });
 
-  for (const embed of embeds.slice(1)) {
-    await interaction.followUp({ embeds: [embed], ...visibility });
+  for (const chunk of chunks.slice(1)) {
+    await interaction.followUp({ embeds: chunk, ...visibility });
   }
 }
 
