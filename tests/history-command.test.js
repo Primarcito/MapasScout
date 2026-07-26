@@ -23,10 +23,10 @@ test('el historial personal muestra tiempo actual, saldo y responde de forma efi
   state.coberturaDia = {};
   state.revisionScores = {};
   try {
-    const description = crearEmbedActividadPersonal('1', 90 * 60_000 + 1).data.description;
-    assert.match(description, /Tiempo de hoy: \*\*1h 30m\*\*/);
-    assert.match(description, /Saldo guardado: \*\*30m\*\*/);
-    assert.match(description, /Acumulado para tiempo: \*\*2h 0m \/ 4h\*\*/);
+    const fields = crearEmbedActividadPersonal('1', 90 * 60_000 + 1).data.fields;
+    assert.equal(fields.length, 2);
+    assert.deepEqual(fields[0], { name: 'Tiempo de hoy', value: '**1h 30m**', inline: true });
+    assert.deepEqual(fields[1], { name: 'Saldo acumulado', value: 'Guardado: **30m**\nTotal: **2h 0m / 4h**', inline: true });
     const replies = [];
     const followUps = [];
     await scoutCommand.execute({

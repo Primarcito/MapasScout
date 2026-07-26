@@ -74,7 +74,10 @@ function crearEmbedActividadPersonal(userId, now = Date.now()) {
   return new EmbedBuilder()
     .setTitle('Tu actividad hasta ahora')
     .setColor(0x5865f2)
-    .setDescription(`Tiempo de hoy: **${formatMinutes(todayMinutes)}**\nSaldo guardado: **${formatMinutes(savedMinutes)}**\nAcumulado para tiempo: **${formatMinutes(accumulatedMinutes)} / 4h**`);
+    .addFields(
+      { name: 'Tiempo de hoy', value: `**${formatMinutes(todayMinutes)}**`, inline: true },
+      { name: 'Saldo acumulado', value: `Guardado: **${formatMinutes(savedMinutes)}**\nTotal: **${formatMinutes(accumulatedMinutes)} / 4h**`, inline: true },
+    );
 }
 
 function generarEmbedsHistorial(summaryNow = Date.now()) {
