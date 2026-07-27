@@ -14,8 +14,8 @@ function summarySourceKey(summaryNow, page, totalPages) {
 
 function crearEmbedHistorial(desc, page = 1, totalPages = 1, sourceKey = null) {
   const title = totalPages > 1
-    ? `?? Resumen del D?a ${page}/${totalPages}`
-    : "?? Resumen del D?a";
+    ? `\u{1F4CA} Resumen del D\u00eda ${page}/${totalPages}`
+    : '\u{1F4CA} Resumen del D\u00eda';
 
   const embed = new EmbedBuilder()
     .setTitle(title)

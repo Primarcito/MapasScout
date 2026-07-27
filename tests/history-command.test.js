@@ -36,6 +36,7 @@ test('el historial personal muestra tiempo actual, saldo y responde de forma efi
     });
     assert.equal(replies[0].flags, 64);
     assert.equal(replies[0].embeds.length, 2);
+    assert.equal(replies[0].embeds[1].data.title, '\u{1F4CA} Resumen del D\u00eda');
     assert.equal(followUps.length, 0);
   } finally {
     Object.assign(state, previous);

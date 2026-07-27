@@ -351,21 +351,25 @@ module.exports = async function handleButton(interaction) {
         'salida_manual'
       );
       state.registros[ciudad][mapa] = state.registros[ciudad][mapa].filter(id => id !== userId);
-      await cancelScoutVerification(userId, "Verificacion cancelada: cambiaste tus mapas activos.");
-
       guardarDatos();
       guardarScouts();
-      await actualizarPanel();
-      await verificarMapaVacio(ciudad, mapa);
-      await sendScoutLog('RETIRADO', [
-        `Scout: ${formatUser(userId, interaction.user.username)}`,
-        `Mapas: ${formatMaps([{ ciudad, mapa }])}`,
-        `Motivo: salida manual`
-      ]);
 
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `❌ Saliste de **${mapa}**\n\n` + resp.content;
-      return interaction.editReply(resp);
+      await interaction.editReply(resp);
+
+      // La vista efimera debe reflejar el clic antes de esperar operaciones de red.
+      await cancelScoutVerification(userId, "Verificacion cancelada: cambiaste tus mapas activos.");
+      await Promise.all([
+        actualizarPanel(),
+        verificarMapaVacio(ciudad, mapa),
+        sendScoutLog('RETIRADO', [
+          `Scout: ${formatUser(userId, interaction.user.username)}`,
+          `Mapas: ${formatMaps([{ ciudad, mapa }])}`,
+          `Motivo: salida manual`
+        ])
+      ]);
+      return;
 
     } else if (state.registros[ciudad][mapa].length < 5) {
       // No está anotado y hay lugar → anotarlo
@@ -379,17 +383,21 @@ module.exports = async function handleButton(interaction) {
 
       guardarDatos();
       guardarScouts();
-      await actualizarPanel();
-      await verificarMapaVacio(ciudad, mapa);
-      await sendScoutLog('ANOTADO', [
-        `Scout: ${formatUser(userId, interaction.user.username)}`,
-        `Mapas: ${formatMaps([{ ciudad, mapa }])}`,
-        `Origen: boton Anotarse`
-      ]);
-
       const resp = respuestaMapas(ciudad, userId);
       resp.content = `✅ Listo causa, ya estás en **${mapa}**\n\n` + resp.content;
-      return interaction.editReply(resp);
+      await interaction.editReply(resp);
+
+      // El panel, las alertas y el log se sincronizan despues de actualizar al scout.
+      await Promise.all([
+        actualizarPanel(),
+        verificarMapaVacio(ciudad, mapa),
+        sendScoutLog('ANOTADO', [
+          `Scout: ${formatUser(userId, interaction.user.username)}`,
+          `Mapas: ${formatMaps([{ ciudad, mapa }])}`,
+          `Origen: boton Anotarse`
+        ])
+      ]);
+      return;
     } else {
       // Lleno
       const resp = respuestaMapas(ciudad, userId);
