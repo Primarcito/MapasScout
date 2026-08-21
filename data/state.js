@@ -79,4 +79,5 @@ module.exports = {
   lastArchivedSummaryMessageId: null,
   lastArchivedSummaryChannelId: null,
   completedSummaryRegenerations: [],
+  completedOneTimeReplies: [],
 };

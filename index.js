@@ -19,6 +19,7 @@ const { canScout } = require('./permissions');
 const { sendCreatorMessage } = require('./utils/creatorMessages');
 const { sincronizarMensajeAlertas } = require('./utils/alerts');
 const { startRevisionRounds, beginRevisionRound } = require('./utils/revisionRounds');
+const { sendOneTimeReply } = require('./utils/oneTimeReplies');
 
 /* ================= CARGAR DATOS PERSISTIDOS ================= */
 
@@ -128,6 +129,13 @@ client.once("clientReady", async () => {
 
   if (config.CREATOR_NOTIFY_STARTUP) {
     await sendCreatorMessage(`Bot de mapas listo: **${client.user.tag}**`);
+  }
+
+  try {
+    const replied = await sendOneTimeReply(client);
+    if (replied) console.log('Respuesta troll de la piedra enviada.');
+  } catch (err) {
+    console.error('No se pudo enviar la respuesta troll de la piedra:', err);
   }
 
   try {

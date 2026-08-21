@@ -166,6 +166,7 @@ function guardarRevisionPanel() {
       lastArchivedSummaryMessageId: state.lastArchivedSummaryMessageId,
       lastArchivedSummaryChannelId: state.lastArchivedSummaryChannelId,
       completedSummaryRegenerations: state.completedSummaryRegenerations,
+      completedOneTimeReplies: state.completedOneTimeReplies,
     }, null, 2)
   );
 }
@@ -184,6 +185,7 @@ function cargarRevisionPanel() {
     state.lastArchivedSummaryMessageId = data.lastArchivedSummaryMessageId || null;
     state.lastArchivedSummaryChannelId = data.lastArchivedSummaryChannelId || null;
     state.completedSummaryRegenerations = data.completedSummaryRegenerations || [];
+    state.completedOneTimeReplies = data.completedOneTimeReplies || [];
   }
 }
 
